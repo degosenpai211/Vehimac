@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -10,7 +10,7 @@ export class ApiError extends Error {
 async function request(path, options = {}) {
   let res
   try {
-    res = await fetch(`${API_URL}${path}`, {
+    res = await fetch(`${API_URL}/api${path}`, {
       headers: { 'Content-Type': 'application/json', ...options.headers },
       ...options,
     })
