@@ -4,11 +4,13 @@ import Modal from '../components/Modal'
 import Loading from '../components/Loading'
 import EmptyState from '../components/EmptyState'
 import { useToast } from '../components/Toast'
-import { api, formatCurrency, formatDate, formatDateTime, formatPhone, whatsappUrl } from '../services/api'
-import { ORDER_STATUS, PAYMENT_METHODS } from '../utils/status'
+import { api, formatCurrency, formatDate, formatDateTime, formatPhone, whatsappUrl, formatOT } from '../services/api'
+import { ORDER_STATUS } from '../utils/status'
+
+const emptyAuto = () => ({ make: '', model: '', year: '' })
 
 const emptyForm = {
-  name: '', phone: '', whatsapp: '', balance: '', payment_method: '', notes: '', vehicle: '',
+  name: '', phone: '', whatsapp: '', notes: '', autos: [emptyAuto()],
 }
 
 export default function Clientes() {
@@ -32,7 +34,6 @@ export default function Clientes() {
     if (search) params.search = search
     if (hasStored === 'yes') params.has_stored_pieces = true
     if (hasStored === 'no') params.has_stored_pieces = false
-
     api.getClients(params)
       .then((res) => setClients(res.items || res))
       .catch((err) => toast(err.message, 'error'))
@@ -49,52 +50,69 @@ export default function Clientes() {
 
   const openEdit = (c) => {
     setEditing(c)
+    const autos = (c.autos || c.vehicles || []).map((a) => ({
+      make: a.make || '', model: a.model || '', year: a.year || '',
+    }))
     setForm({
       name: c.name,
       phone: c.phone || '',
       whatsapp: c.whatsapp || '',
-      balance: c.balance ?? '',
-      payment_method: c.payment_method || '',
       notes: c.notes || '',
-      vehicle: '',
+      autos: autos.length ? autos : [emptyAuto()],
     })
     setModalOpen(true)
   }
 
   const openDetail = async (c) => {
     try {
-      const full = await api.getClient(c.id)
-      setSelected(full)
+      setSelected(await api.getClient(c.id))
       setDetailOpen(true)
     } catch (err) {
       toast(err.message, 'error')
     }
   }
 
+  const addAuto = () => setForm({ ...form, autos: [...form.autos, emptyAuto()] })
+
+  const updateAuto = (idx, field, val) => {
+    const autos = [...form.autos]
+    autos[idx] = { ...autos[idx], [field]: val }
+    setForm({ ...form, autos })
+  }
+
+  const removeAuto = (idx) => {
+    if (form.autos.length <= 1) return
+    setForm({ ...form, autos: form.autos.filter((_, i) => i !== idx) })
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setSaving(true)
     try {
-      const balance = Number(form.balance) || 0
-      if (balance > 0) {
-        toast('No se permite fiado. El saldo solo puede ser 0 o negativo (adelanto).', 'error')
-        setSaving(false)
-        return
-      }
+      const autos = form.autos
+        .filter((a) => a.make || a.model || a.year)
+        .map((a) => ({
+          make: a.make || null,
+          model: a.model || null,
+          year: a.year ? Number(a.year) : null,
+        }))
       const data = {
         name: form.name,
         phone: form.phone || null,
         whatsapp: form.whatsapp || form.phone || null,
-        balance,
-        payment_method: form.payment_method || null,
         notes: form.notes || null,
       }
       if (editing) {
         await api.updateClient(editing.id, data)
+        for (const old of editing.autos || editing.vehicles || []) {
+          await api.deleteAuto(editing.id, old.id)
+        }
+        for (const a of autos) {
+          await api.addAuto(editing.id, a)
+        }
         toast('Cliente actualizado', 'success')
       } else {
-        const vehicles = form.vehicle ? [{ make: form.vehicle }] : []
-        await api.createClient({ ...data, vehicles })
+        await api.createClient({ ...data, autos })
         toast('Cliente creado', 'success')
       }
       setModalOpen(false)
@@ -128,11 +146,9 @@ export default function Clientes() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Clientes</h1>
-          <p className="text-sm text-slate-500">Contactos y piezas pendientes de recoger</p>
+          <p className="text-sm text-slate-500">Nombre, contacto y autos</p>
         </div>
-        <button onClick={openCreate} className="btn-primary">
-          <Plus size={18} /> Nuevo cliente
-        </button>
+        <button onClick={openCreate} className="btn-primary"><Plus size={18} /> Nuevo cliente</button>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -143,15 +159,14 @@ export default function Clientes() {
         <select className="input sm:w-44" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
           <option value="name">Nombre</option>
           <option value="updated_at">Última modificación</option>
-          <option value="balance_updated_at">Saldo modificado</option>
           <option value="created_at">Fecha de alta</option>
         </select>
         <select className="input sm:w-32" value={sortDir} onChange={(e) => setSortDir(e.target.value)}>
-          <option value="asc">Ascendente</option>
-          <option value="desc">Descendente</option>
+          <option value="asc">A → Z</option>
+          <option value="desc">Z → A</option>
         </select>
         <select className="input sm:w-44" value={hasStored} onChange={(e) => setHasStored(e.target.value)}>
-          <option value="">Todas las piezas</option>
+          <option value="">Todos</option>
           <option value="yes">Con piezas sin recoger</option>
           <option value="no">Sin piezas guardadas</option>
         </select>
@@ -163,36 +178,26 @@ export default function Clientes() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {clients.map((c) => {
             const wa = whatsappUrl(c.whatsapp || c.phone)
-            const bal = balanceLabel(c.balance)
+            const autos = c.autos || c.vehicles || []
             return (
               <div key={c.id} className="card p-4 hover:shadow-md cursor-pointer" onClick={() => openDetail(c)}>
                 <div className="flex justify-between items-start">
                   <h3 className="font-semibold">{c.name}</h3>
                   <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                    {wa && (
-                      <a href={wa} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-green-50 text-green-600">
-                        <MessageCircle size={15} />
-                      </a>
-                    )}
-                    <button onClick={() => openEdit(c)} className="p-1 rounded hover:bg-slate-100 text-slate-500">
-                      <Pencil size={15} />
-                    </button>
-                    <button onClick={() => handleDelete(c.id)} className="p-1 rounded hover:bg-red-50 text-red-500">
-                      <Trash2 size={15} />
-                    </button>
+                    {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-green-50 text-green-600"><MessageCircle size={15} /></a>}
+                    <button onClick={() => openEdit(c)} className="p-1 rounded hover:bg-slate-100"><Pencil size={15} /></button>
+                    <button onClick={() => handleDelete(c.id)} className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 size={15} /></button>
                   </div>
                 </div>
-                <div className="mt-2 space-y-1 text-sm text-slate-500">
-                  {c.phone && <p className="flex items-center gap-1.5"><Phone size={14} /> {formatPhone(c.phone)}</p>}
-                  {c.stored_pieces_count > 0 && (
-                    <p className="text-amber-600 font-medium">{c.stored_pieces_count} pieza(s) sin recoger</p>
-                  )}
-                </div>
+                {c.phone && <p className="text-sm text-slate-500 mt-1 flex items-center gap-1"><Phone size={14} /> {formatPhone(c.phone)}</p>}
+                {autos.length > 0 && (
+                  <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                    <Car size={14} /> {autos.map((a) => [a.make, a.model, a.year].filter(Boolean).join(' ')).join(' · ')}
+                  </p>
+                )}
                 <div className="mt-3 flex justify-between text-sm">
-                  <span className={bal.class}>{bal.text}</span>
-                  {c.balance_updated_at && (
-                    <span className="text-xs text-slate-400">Saldo: {formatDateTime(c.balance_updated_at)}</span>
-                  )}
+                  {c.stored_pieces_count > 0 && <span className="text-amber-600 font-medium">{c.stored_pieces_count} sin recoger</span>}
+                  <span className={balanceLabel(c.balance).class}>{balanceLabel(c.balance).text}</span>
                 </div>
               </div>
             )
@@ -200,7 +205,7 @@ export default function Clientes() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Editar cliente' : 'Nuevo cliente'}>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Editar cliente' : 'Nuevo cliente'} size="lg">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="label">Nombre *</label>
@@ -213,36 +218,35 @@ export default function Clientes() {
             </div>
             <div>
               <label className="label">WhatsApp</label>
-              <input className="input" placeholder="7XXXXXXX" value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} />
+              <input className="input" value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Adelanto (Bs., negativo)</label>
-              <input type="number" max="0" step="0.01" className="input" placeholder="0" value={form.balance} onChange={(e) => setForm({ ...form, balance: e.target.value })} />
-              <p className="text-xs text-slate-400 mt-1">0 = al día. Negativo = adelantó. No se permite fiado.</p>
+
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="label mb-0">Autos</label>
+              <button type="button" onClick={addAuto} className="btn-secondary btn-sm"><Plus size={14} /> Añadir auto</button>
             </div>
-            <div>
-              <label className="label">Forma de pago</label>
-              <select className="input" value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
-                <option value="">—</option>
-                {Object.entries(PAYMENT_METHODS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
-              </select>
-            </div>
+            {form.autos.map((auto, idx) => (
+              <div key={idx} className="grid grid-cols-3 gap-2 mb-2 p-2 bg-slate-50 rounded-lg border">
+                <input className="input" placeholder="Marca" value={auto.make} onChange={(e) => updateAuto(idx, 'make', e.target.value)} />
+                <input className="input" placeholder="Modelo" value={auto.model} onChange={(e) => updateAuto(idx, 'model', e.target.value)} />
+                <div className="flex gap-1">
+                  <input className="input" placeholder="Año" type="number" value={auto.year} onChange={(e) => updateAuto(idx, 'year', e.target.value)} />
+                  {form.autos.length > 1 && (
+                    <button type="button" onClick={() => removeAuto(idx)} className="text-red-500 px-2">×</button>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-          {!editing && (
-            <div>
-              <label className="label">Vehículo (opcional)</label>
-              <input className="input" value={form.vehicle} onChange={(e) => setForm({ ...form, vehicle: e.target.value })} />
-            </div>
-          )}
+
           <div>
             <label className="label">Notas</label>
             <textarea className="input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </div>
-          <div className="flex gap-2 justify-end pt-2">
+
+          <div className="flex gap-2 justify-end">
             <button type="button" onClick={() => setModalOpen(false)} className="btn-secondary">Cancelar</button>
             <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Guardando...' : 'Guardar'}</button>
           </div>
@@ -251,60 +255,47 @@ export default function Clientes() {
 
       <Modal open={detailOpen} onClose={() => setDetailOpen(false)} title={selected?.name || 'Cliente'} size="lg">
         {selected && (
-          <div className="space-y-4">
-            <div className="grid sm:grid-cols-2 gap-3 text-sm">
-              <div><span className="text-slate-500">Teléfono:</span> {formatPhone(selected.phone)}</div>
+          <div className="space-y-4 text-sm">
+            <div className="grid sm:grid-cols-2 gap-2">
+              <div>Tel: {formatPhone(selected.phone)}</div>
               <div>
-                <span className="text-slate-500">WhatsApp:</span>{' '}
+                WhatsApp:{' '}
                 {whatsappUrl(selected.whatsapp || selected.phone) ? (
                   <a href={whatsappUrl(selected.whatsapp || selected.phone)} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline inline-flex items-center gap-1">
                     {formatPhone(selected.whatsapp || selected.phone)} <ExternalLink size={12} />
                   </a>
                 ) : '-'}
               </div>
-              <div><span className="text-slate-500">Saldo:</span> <span className={balanceLabel(selected.balance).class}>{balanceLabel(selected.balance).text}</span></div>
-              {selected.payment_method && (
-                <div><span className="text-slate-500">Pago:</span> {PAYMENT_METHODS[selected.payment_method] || selected.payment_method}</div>
-              )}
-              {selected.balance_updated_at && (
-                <div className="sm:col-span-2 text-slate-400">Saldo modificado: {formatDateTime(selected.balance_updated_at)}</div>
-              )}
+              <div>Saldo: <span className={balanceLabel(selected.balance).class}>{balanceLabel(selected.balance).text}</span></div>
             </div>
-
-            {selected.stored_pieces_count > 0 && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                Tiene <strong>{selected.stored_pieces_count}</strong> pieza(s) terminada(s) sin recoger.
-              </div>
-            )}
-
-            {selected.vehicles?.length > 0 && (
+            {(selected.autos || selected.vehicles)?.length > 0 && (
               <div>
-                <h3 className="font-medium mb-2">Vehículos</h3>
-                <ul className="space-y-1 text-sm">
-                  {selected.vehicles.map((v) => (
-                    <li key={v.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded">
-                      <Car size={14} />
-                      {[v.make, v.model, v.year, v.plate].filter(Boolean).join(' · ') || 'Sin detalles'}
+                <h3 className="font-medium mb-2">Autos</h3>
+                <ul className="space-y-1">
+                  {(selected.autos || selected.vehicles).map((a) => (
+                    <li key={a.id} className="p-2 bg-slate-50 rounded flex items-center gap-2">
+                      <Car size={14} /> {[a.make, a.model, a.year].filter(Boolean).join(' · ')}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-
+            {selected.stored_pieces_count > 0 && (
+              <p className="p-2 bg-amber-50 text-amber-800 rounded">{selected.stored_pieces_count} pieza(s) sin recoger</p>
+            )}
             <div>
-              <h3 className="font-medium mb-2">Historial de órdenes</h3>
+              <h3 className="font-medium mb-2">Órdenes</h3>
               <ul className="space-y-2">
                 {(selected.work_orders || []).map((o) => (
-                  <li key={o.id} className="p-3 bg-slate-50 rounded-lg text-sm">
+                  <li key={o.id} className="p-3 bg-slate-50 rounded-lg">
                     <div className="flex justify-between gap-2">
-                      <p className="font-medium">{o.work_description}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded border shrink-0 ${ORDER_STATUS[o.status]?.color}`}>
-                        {ORDER_STATUS[o.status]?.label}
-                      </span>
+                      <span className="font-bold text-brand-700">{formatOT(o)}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded border ${ORDER_STATUS[o.status]?.color}`}>{ORDER_STATUS[o.status]?.label}</span>
                     </div>
+                    <p className="mt-1">{o.work_description}</p>
                     <div className="flex justify-between mt-1 text-slate-500">
                       <span>{formatDate(o.entry_date)}</span>
-                      <span className="font-medium">{formatCurrency(o.price_charged)}</span>
+                      <span>{formatCurrency(o.price_charged)}</span>
                     </div>
                   </li>
                 ))}

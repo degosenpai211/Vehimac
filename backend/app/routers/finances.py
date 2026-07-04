@@ -33,6 +33,45 @@ def list_finances(
     return result.data or []
 
 
+@router.get("/summary/periods")
+def period_summaries():
+    from datetime import timedelta
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    if today.month == 1:
+        last_month_start = date(today.year - 1, 12, 1)
+        last_month_end = date(today.year - 1, 12, 31)
+    else:
+        last_month_start = date(today.year, today.month - 1, 1)
+        last_month_end = date(today.year, today.month, 1) - timedelta(days=1)
+
+    periods = {
+        "today": _compute_summary(today.isoformat(), today.isoformat(), "Hoy"),
+        "week": _compute_summary(week_start.isoformat(), today.isoformat(), "Esta semana"),
+        "last_month": _compute_summary(last_month_start.isoformat(), last_month_end.isoformat(), "Mes pasado"),
+    }
+
+    db = get_supabase()
+    for key, p in periods.items():
+        d_from = today.isoformat() if key == "today" else (week_start.isoformat() if key == "week" else last_month_start.isoformat())
+        d_to = today.isoformat() if key != "last_month" else last_month_end.isoformat()
+        adv = (
+            db.table("finances")
+            .select("amount")
+            .eq("type", "ingreso")
+            .eq("category", "Adelantos")
+            .gte("date", d_from)
+            .lte("date", d_to)
+            .execute()
+        )
+        total_adv = sum(Decimal(str(r["amount"])) for r in (adv.data or []))
+        p_dict = p.model_dump(mode="json")
+        p_dict["total_adelantos"] = float(total_adv)
+        periods[key] = p_dict
+
+    return periods
+
+
 @router.get("/summary/daily", response_model=FinanceSummary)
 def daily_summary(target_date: date | None = Query(None)):
     d = target_date or date.today()

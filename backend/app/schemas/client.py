@@ -13,10 +13,9 @@ class PaymentMethod(str, Enum):
 
 
 class VehicleBase(BaseModel):
-    make: str | None = None
-    model: str | None = None
-    year: int | None = None
-    plate: str | None = None
+    make: str | None = Field(None, description="Marca")
+    model: str | None = Field(None, description="Modelo")
+    year: int | None = Field(None, description="Año")
 
 
 class VehicleCreate(VehicleBase):
@@ -42,7 +41,7 @@ class ClientBase(BaseModel):
 
 
 class ClientCreate(ClientBase):
-    vehicles: list[VehicleCreate] = []
+    autos: list[VehicleCreate] = []
 
 
 class ClientUpdate(BaseModel):
@@ -63,6 +62,7 @@ class ClientUpdate(BaseModel):
 
 class WorkOrderBrief(BaseModel):
     id: UUID
+    ot_number: int | None = None
     work_description: str
     status: str
     price_charged: Decimal
@@ -75,7 +75,7 @@ class ClientResponse(ClientBase):
     created_at: datetime
     updated_at: datetime
     balance_updated_at: datetime | None = None
-    vehicles: list[VehicleResponse] = []
+    autos: list[VehicleResponse] = []
     work_orders: list[WorkOrderBrief] = []
     stored_pieces_count: int = 0
 

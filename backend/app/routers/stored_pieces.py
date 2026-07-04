@@ -26,7 +26,7 @@ def list_stored_pieces(
     db = get_supabase()
     query = (
         db.table("work_orders")
-        .select("*, clients(id, name, phone, whatsapp)", count="exact")
+        .select("id, work_description, ot_number, client_id, vehicle_type, part_description, price_charged, entry_date, estimated_delivery_date, clients(id, name, phone, whatsapp)", count="exact")
         .eq("status", "terminado")
     )
 

@@ -22,7 +22,7 @@ def _enrich_clients_batch(db, clients: list[dict]) -> list[dict]:
 
     orders_result = (
         db.table("work_orders")
-        .select("id, client_id, work_description, status, price_charged, entry_date, created_at")
+        .select("id, client_id, ot_number, work_description, status, price_charged, entry_date, created_at")
         .in_("client_id", client_ids)
         .order("created_at", desc=True)
         .execute()
@@ -38,7 +38,9 @@ def _enrich_clients_batch(db, clients: list[dict]) -> list[dict]:
 
     for client in clients:
         cid = client["id"]
-        client["vehicles"] = vehicles_by_client.get(cid, [])
+        autos = vehicles_by_client.get(cid, [])
+        client["vehicles"] = autos
+        client["autos"] = autos
         client["work_orders"] = orders_by_client.get(cid, [])
         client["stored_pieces_count"] = stored_count.get(cid, 0)
 
@@ -58,6 +60,7 @@ def _normalize_client_phones(data: dict) -> dict:
 @router.get("")
 def list_clients(
     search: str | None = Query(None),
+    prefix: bool = Query(False, description="Buscar nombres que empiezan con el texto"),
     has_stored_pieces: bool | None = Query(None),
     sort_by: str = Query("name"),
     sort_dir: str = Query("asc"),
@@ -68,7 +71,10 @@ def list_clients(
     query = db.table("clients").select("*", count="exact")
 
     if search:
-        query = query.or_(f"name.ilike.%{search}%,phone.ilike.%{search}%,whatsapp.ilike.%{search}%")
+        if prefix:
+            query = query.ilike("name", f"{search}%")
+        else:
+            query = query.or_(f"name.ilike.%{search}%,phone.ilike.%{search}%,whatsapp.ilike.%{search}%")
 
     desc = sort_dir.lower() == "desc"
     sort_col = sort_by if sort_by in ("name", "created_at", "updated_at", "balance_updated_at") else "name"
@@ -102,19 +108,18 @@ def get_client(client_id: UUID):
 @router.post("", response_model=ClientResponse, status_code=201)
 def create_client(client: ClientCreate):
     db = get_supabase()
-    vehicles_data = client.vehicles
-    client_data = _normalize_client_phones(client.model_dump(exclude={"vehicles"}, mode="json"))
+    autos_data = client.autos or getattr(client, "vehicles", []) or []
+    client_data = _normalize_client_phones(client.model_dump(exclude={"autos", "vehicles"}, mode="json"))
 
     result = db.table("clients").insert(client_data).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Error al crear cliente")
 
     new_client = result.data[0]
-    if vehicles_data:
-        for v in vehicles_data:
-            v_data = v.model_dump(mode="json")
-            v_data["client_id"] = new_client["id"]
-            db.table("vehicles").insert(v_data).execute()
+    for v in autos_data:
+        v_data = v.model_dump(mode="json") if hasattr(v, "model_dump") else v
+        v_data["client_id"] = new_client["id"]
+        db.table("vehicles").insert(v_data).execute()
 
     return _enrich_clients_batch(db, [new_client])[0]
 
@@ -146,6 +151,7 @@ def delete_client(client_id: UUID):
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
 
+@router.post("/{client_id}/autos", response_model=VehicleResponse, status_code=201)
 @router.post("/{client_id}/vehicles", response_model=VehicleResponse, status_code=201)
 def add_vehicle(client_id: UUID, vehicle: VehicleCreate):
     db = get_supabase()

@@ -37,29 +37,38 @@ export const api = {
   },
 
   getClients: (params = {}) => {
-    const q = new URLSearchParams(params).toString()
-    return request(`/clients${q ? `?${q}` : ''}`)
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== '' && v != null) q.set(k, v)
+    })
+    const s = q.toString()
+    return request(`/clients${s ? `?${s}` : ''}`)
   },
   getClient: (id) => request(`/clients/${id}`),
   createClient: (data) => request('/clients', { method: 'POST', body: JSON.stringify(data) }),
   updateClient: (id, data) => request(`/clients/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteClient: (id) => request(`/clients/${id}`, { method: 'DELETE' }),
+  addAuto: (clientId, data) => request(`/clients/${clientId}/autos`, { method: 'POST', body: JSON.stringify(data) }),
+  deleteAuto: (clientId, autoId) => request(`/clients/${clientId}/vehicles/${autoId}`, { method: 'DELETE' }),
 
   getWorkOrders: (params = {}) => {
     const q = new URLSearchParams(params).toString()
     return request(`/work-orders${q ? `?${q}` : ''}`)
   },
   getKanban: () => request('/work-orders/kanban'),
+  getWorkOrder: (id) => request(`/work-orders/${id}`),
   createWorkOrder: (data) => request('/work-orders', { method: 'POST', body: JSON.stringify(data) }),
   updateWorkOrder: (id, data) => request(`/work-orders/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   updateOrderStatus: (id, status) =>
     request(`/work-orders/${id}/status?status=${status}`, { method: 'PATCH' }),
+  recordAdvance: (id) => request(`/work-orders/${id}/advance`, { method: 'POST' }),
   deleteWorkOrder: (id) => request(`/work-orders/${id}`, { method: 'DELETE' }),
 
   getFinances: (params = {}) => {
     const q = new URLSearchParams(params).toString()
     return request(`/finances${q ? `?${q}` : ''}`)
   },
+  getPeriodSummaries: () => request('/finances/summary/periods'),
   getDailySummary: (date) => request(`/finances/summary/daily${date ? `?target_date=${date}` : ''}`),
   getMonthlySummary: (year, month) => {
     const params = new URLSearchParams()
@@ -101,4 +110,9 @@ export function whatsappUrl(phone) {
   if (!digits) return null
   const normalized = digits.startsWith('591') ? digits : `591${digits.replace(/^0/, '')}`
   return `https://wa.me/${normalized}`
+}
+
+export function formatOT(order) {
+  if (order?.ot_number) return `OT${order.ot_number}`
+  return order?.ot_number === 0 ? 'OT0' : '—'
 }

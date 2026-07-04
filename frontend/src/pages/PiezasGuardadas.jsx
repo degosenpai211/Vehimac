@@ -3,7 +3,7 @@ import { Search, MessageCircle, ExternalLink } from 'lucide-react'
 import Loading from '../components/Loading'
 import EmptyState from '../components/EmptyState'
 import { useToast } from '../components/Toast'
-import { api, formatCurrency, formatDate, formatPhone, whatsappUrl } from '../services/api'
+import { api, formatCurrency, formatDate, formatPhone, whatsappUrl, formatOT } from '../services/api'
 
 export default function PiezasGuardadas() {
   const [pieces, setPieces] = useState([])
@@ -67,6 +67,10 @@ export default function PiezasGuardadas() {
             const wa = p.client ? whatsappUrl(p.client.whatsapp || p.client.phone) : null
             return (
               <div key={p.id} className="card p-4">
+                <div className="flex justify-between items-start mb-1">
+                  <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{formatOT(p)}</span>
+                  <span className="text-lg font-bold text-brand-700">{formatCurrency(p.price_charged)}</span>
+                </div>
                 <h3 className="font-semibold text-sm leading-tight">{p.work_description}</h3>
                 {p.part_description && (
                   <p className="text-xs text-slate-500 mt-1">Pieza: {p.part_description}</p>
@@ -75,7 +79,6 @@ export default function PiezasGuardadas() {
                   <p className="text-xs text-slate-400">{p.vehicle_type}</p>
                 )}
                 <div className="mt-3 flex justify-between items-center">
-                  <span className="text-lg font-bold text-brand-700">{formatCurrency(p.price_charged)}</span>
                   <span className="text-xs text-slate-400">Inicio: {formatDate(p.entry_date)}</span>
                 </div>
                 {p.client && (
