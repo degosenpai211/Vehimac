@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import { Plus, Pencil, Trash2, Search, Copy } from 'lucide-react'
 import Modal from '../components/Modal'
@@ -24,7 +24,6 @@ export default function Ordenes() {
   const [pieces, setPieces] = useState([emptyPiece()])
   const [registerAdvance, setRegisterAdvance] = useState(false)
   const [advanceAmount, setAdvanceAmount] = useState('')
-  const advanceTouchedRef = useRef(false)
   const [estimatedDelivery, setEstimatedDelivery] = useState('')
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
@@ -37,10 +36,9 @@ export default function Ordenes() {
   const total = pieces.reduce((s, p) => s + (Number(p.amount) || 0), 0)
   const suggestedAdvance = total > 0 ? Math.round((total / 2) * 100) / 100 : 0
 
-  useEffect(() => {
-    if (!modalOpen || advanceTouchedRef.current || editing?.advance_recorded) return
-    setAdvanceAmount(suggestedAdvance > 0 ? String(suggestedAdvance) : '')
-  }, [suggestedAdvance, modalOpen, editing?.advance_recorded])
+  const applySuggestedAdvance = () => {
+    if (suggestedAdvance > 0) setAdvanceAmount(String(suggestedAdvance))
+  }
 
   const load = async () => {
     setLoading(true)
@@ -79,7 +77,6 @@ export default function Ordenes() {
     setPieces([emptyPiece()])
     setRegisterAdvance(false)
     setAdvanceAmount('')
-    advanceTouchedRef.current = false
     setEstimatedDelivery('')
     setModalOpen(true)
   }
@@ -92,7 +89,6 @@ export default function Ordenes() {
       setEstimatedDelivery(full.estimated_delivery_date || '')
       setRegisterAdvance(false)
       setAdvanceAmount(full.advance_amount != null ? String(full.advance_amount) : '')
-      advanceTouchedRef.current = true
       setPieces(
         full.pieces?.length
           ? full.pieces.map((p) => ({
@@ -415,33 +411,42 @@ export default function Ordenes() {
               <span className="font-medium">Monto total</span>
               <span className="text-xl font-bold text-brand-800">{formatCurrency(total)}</span>
             </div>
-            <div className="flex justify-between items-center gap-3 text-sm text-slate-600">
-              <div>
-                <span className="font-medium">Adelanto (Bs.)</span>
-                <p className="text-xs text-slate-400">Sugerido: 50% ({formatCurrency(suggestedAdvance)})</p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="label mb-0">Adelanto (Bs.)</label>
+                {!editing?.advance_recorded && suggestedAdvance > 0 && (
+                  <button
+                    type="button"
+                    onClick={applySuggestedAdvance}
+                    className="text-xs font-medium text-brand-700 hover:text-brand-900 underline"
+                  >
+                    Usar 50% ({formatCurrency(suggestedAdvance)})
+                  </button>
+                )}
               </div>
               <input
-                type="number"
-                min="0"
-                step="0.01"
-                max={total || undefined}
-                className="input w-32 text-right font-semibold"
+                type="text"
+                inputMode="decimal"
+                placeholder="Escribí el monto del adelanto"
+                className="input font-semibold"
                 value={advanceAmount}
-                disabled={editing?.advance_recorded}
+                readOnly={!!editing?.advance_recorded}
                 onChange={(e) => {
-                  advanceTouchedRef.current = true
-                  setAdvanceAmount(e.target.value)
+                  const val = e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.')
+                  setAdvanceAmount(val)
                 }}
               />
+              {editing?.advance_recorded ? (
+                <p className="text-xs text-green-700">Adelanto ya registrado en finanzas (no editable)</p>
+              ) : (
+                <p className="text-xs text-slate-400">Podés escribir cualquier monto hasta el total de la orden</p>
+              )}
             </div>
             {!editing?.advance_recorded && (
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" checked={registerAdvance} onChange={(e) => setRegisterAdvance(e.target.checked)} className="rounded" />
                 Registrar adelanto ahora (finanzas + saldo cliente)
               </label>
-            )}
-            {editing?.advance_recorded && (
-              <p className="text-xs text-green-700">Adelanto ya registrado</p>
             )}
           </div>
 
