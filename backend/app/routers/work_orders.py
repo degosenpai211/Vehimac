@@ -60,6 +60,15 @@ def _enrich_order(order: dict) -> dict:
     return order
 
 
+def _resolve_advance(total: Decimal, requested: Decimal | None) -> Decimal:
+    if requested is not None:
+        advance = requested.quantize(Decimal("0.01"))
+        if advance > total:
+            raise HTTPException(status_code=400, detail="El adelanto no puede superar el monto total")
+        return advance
+    return (total / 2).quantize(Decimal("0.01")) if total > 0 else Decimal("0")
+
+
 def _insert_pieces(db, order_id: str, pieces: list[OrderItemCreate]) -> None:
     db.table("order_items").delete().eq("work_order_id", order_id).execute()
     for i, piece in enumerate(pieces):
@@ -162,7 +171,7 @@ def create_work_order(order: WorkOrderCreate):
     summary = _summary_from_pieces(order.pieces)
     ot_number = _next_ot_number(db)
     total = Decimal(str(summary["price_charged"]))
-    advance = (total / 2).quantize(Decimal("0.01")) if total > 0 else Decimal("0")
+    advance = _resolve_advance(total, order.advance_amount)
 
     data = {
         "client_id": str(order.client_id) if order.client_id else None,
@@ -211,8 +220,13 @@ def update_work_order(order_id: UUID, order: WorkOrderUpdate):
         summary = _summary_from_pieces(order.pieces)
         total = Decimal(str(summary["price_charged"]))
         data.update(summary)
-        data["advance_amount"] = float((total / 2).quantize(Decimal("0.01")) if total > 0 else 0)
         _insert_pieces(db, oid, order.pieces)
+        if not old.get("advance_recorded"):
+            requested = order.advance_amount if order.advance_amount is not None else Decimal(str(old.get("advance_amount", 0)))
+            data["advance_amount"] = float(_resolve_advance(total, requested))
+    elif order.advance_amount is not None and not old.get("advance_recorded"):
+        total = Decimal(str(old.get("price_charged", 0)))
+        data["advance_amount"] = float(_resolve_advance(total, order.advance_amount))
 
     if data:
         db.table("work_orders").update(data).eq("id", oid).execute()

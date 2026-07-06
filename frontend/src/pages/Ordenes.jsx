@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import { Plus, Pencil, Trash2, Search, Copy } from 'lucide-react'
 import Modal from '../components/Modal'
@@ -23,6 +23,8 @@ export default function Ordenes() {
   const [clientId, setClientId] = useState('')
   const [pieces, setPieces] = useState([emptyPiece()])
   const [registerAdvance, setRegisterAdvance] = useState(false)
+  const [advanceAmount, setAdvanceAmount] = useState('')
+  const advanceTouchedRef = useRef(false)
   const [estimatedDelivery, setEstimatedDelivery] = useState('')
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
@@ -33,7 +35,12 @@ export default function Ordenes() {
   const { toast } = useToast()
 
   const total = pieces.reduce((s, p) => s + (Number(p.amount) || 0), 0)
-  const advanceAmount = total > 0 ? total / 2 : 0
+  const suggestedAdvance = total > 0 ? Math.round((total / 2) * 100) / 100 : 0
+
+  useEffect(() => {
+    if (!modalOpen || advanceTouchedRef.current || editing?.advance_recorded) return
+    setAdvanceAmount(suggestedAdvance > 0 ? String(suggestedAdvance) : '')
+  }, [suggestedAdvance, modalOpen, editing?.advance_recorded])
 
   const load = async () => {
     setLoading(true)
@@ -71,6 +78,8 @@ export default function Ordenes() {
     setClientId('')
     setPieces([emptyPiece()])
     setRegisterAdvance(false)
+    setAdvanceAmount('')
+    advanceTouchedRef.current = false
     setEstimatedDelivery('')
     setModalOpen(true)
   }
@@ -82,6 +91,8 @@ export default function Ordenes() {
       setClientId(full.client_id || '')
       setEstimatedDelivery(full.estimated_delivery_date || '')
       setRegisterAdvance(false)
+      setAdvanceAmount(full.advance_amount != null ? String(full.advance_amount) : '')
+      advanceTouchedRef.current = true
       setPieces(
         full.pieces?.length
           ? full.pieces.map((p) => ({
@@ -123,12 +134,18 @@ export default function Ordenes() {
       toast('Agregá al menos una pieza con descripción', 'error')
       return
     }
+    const advance = Number(advanceAmount) || 0
+    if (advance < 0 || advance > total) {
+      toast('El adelanto debe estar entre 0 y el monto total', 'error')
+      return
+    }
     setSaving(true)
     try {
       const payload = {
         client_id: clientId || null,
         estimated_delivery_date: estimatedDelivery || null,
         register_advance: registerAdvance,
+        advance_amount: advance,
         pieces: validPieces.map((p) => ({
           part_name: p.part_name || null,
           description: p.description,
@@ -398,9 +415,24 @@ export default function Ordenes() {
               <span className="font-medium">Monto total</span>
               <span className="text-xl font-bold text-brand-800">{formatCurrency(total)}</span>
             </div>
-            <div className="flex justify-between text-sm text-slate-600">
-              <span>Adelanto 50%</span>
-              <span className="font-semibold">{formatCurrency(advanceAmount)}</span>
+            <div className="flex justify-between items-center gap-3 text-sm text-slate-600">
+              <div>
+                <span className="font-medium">Adelanto (Bs.)</span>
+                <p className="text-xs text-slate-400">Sugerido: 50% ({formatCurrency(suggestedAdvance)})</p>
+              </div>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                max={total || undefined}
+                className="input w-32 text-right font-semibold"
+                value={advanceAmount}
+                disabled={editing?.advance_recorded}
+                onChange={(e) => {
+                  advanceTouchedRef.current = true
+                  setAdvanceAmount(e.target.value)
+                }}
+              />
             </div>
             {!editing?.advance_recorded && (
               <label className="flex items-center gap-2 text-sm cursor-pointer">

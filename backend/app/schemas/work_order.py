@@ -36,6 +36,7 @@ class WorkOrderBase(BaseModel):
 
 class WorkOrderCreate(WorkOrderBase):
     pieces: list[OrderItemCreate] = Field(..., min_length=1)
+    advance_amount: Decimal | None = Field(default=None, ge=0)
     register_advance: bool = False
 
     @model_validator(mode="after")
@@ -49,6 +50,7 @@ class WorkOrderUpdate(BaseModel):
     client_id: UUID | None = None
     estimated_delivery_date: date | None = None
     pieces: list[OrderItemCreate] | None = None
+    advance_amount: Decimal | None = Field(default=None, ge=0)
     register_advance: bool | None = None
     status: WorkOrderStatus | None = None
 

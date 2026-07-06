@@ -32,7 +32,7 @@ def _update_client_balance(db, client_id: str, delta: Decimal) -> None:
 
 
 def register_advance(order_id: UUID, force: bool = False) -> None:
-    """Registra adelanto 50% en finanzas y actualiza saldo del cliente."""
+    """Registra adelanto en finanzas y actualiza saldo del cliente."""
     db = get_supabase()
     oid = str(order_id)
     order_res = db.table("work_orders").select("*").eq("id", oid).execute()
@@ -62,7 +62,7 @@ def register_advance(order_id: UUID, force: bool = False) -> None:
         label = _order_label(order)
         db.table("finances").insert({
             "type": "ingreso",
-            "description": f"Adelanto 50% {label}",
+            "description": f"Adelanto {label}",
             "amount": float(advance),
             "category": "Adelantos",
             "date": date.today().isoformat(),
