@@ -11,8 +11,8 @@ Repo: `https://github.com/degosenpai211/Vehimac.git`
 
 | Rama | Qué hay | En GitHub |
 |------|---------|-----------|
-| `master` | Features de producto. **Producción** (Vercel + Railway). HEAD `ea98738` | Sí, sync |
-| `migracion-vps` | Mismo commit `ea98738`. **No hay código de VPS todavía** (el nombre es para el futuro Path A) | Sí |
+| `master` | Features de producto. **Producción**. HEAD `2fb8eda` (fotos OT + Storage temporal). | Sí, sync |
+| `migracion-vps` | Quedó en `ea98738` (un commit atrás). **No hay código de VPS**; no mezclar Path A aquí. | Sí |
 
 No mezclar infra VPS con features. Path A (Postgres nativo, Nginx, PM2, Hostinger) **no está implementado**. `config.py` / `database.py` siguen con `SUPABASE_URL` + `SUPABASE_KEY` + `supabase-py`.
 
