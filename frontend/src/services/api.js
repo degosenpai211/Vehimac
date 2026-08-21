@@ -68,10 +68,29 @@ export const api = {
   updateWorkOrder: (id, data) => request(`/work-orders/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   updateOrderStatus: (id, status) =>
     request(`/work-orders/${id}/status?status=${status}`, { method: 'PATCH' }),
-    recordAdvance: (id) => request(`/work-orders/${id}/advance`, { method: 'POST' }),
+  recordAdvance: (id) => request(`/work-orders/${id}/advance`, { method: 'POST' }),
   confirmQrPayment: (id, data) =>
     request(`/work-orders/${id}/qr-payment`, { method: 'POST', body: JSON.stringify(data) }),
   deleteWorkOrder: (id) => request(`/work-orders/${id}`, { method: 'DELETE' }),
+  getOrderPhotos: (id) => request(`/work-orders/${id}/photos`),
+  uploadOrderPhoto: async (id, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    let res
+    try {
+      res = await fetch(`${API_URL}/api/work-orders/${id}/photos`, { method: 'POST', body: form })
+    } catch {
+      throw new ApiError('Sin conexión al servidor. Verificá que el backend esté corriendo.', 0)
+    }
+    const data = await res.json().catch(() => null)
+    if (!res.ok) {
+      const msg = data?.detail || `Error ${res.status}`
+      throw new ApiError(typeof msg === 'string' ? msg : JSON.stringify(msg), res.status)
+    }
+    return data
+  },
+  deleteOrderPhoto: (orderId, photoId) =>
+    request(`/work-orders/${orderId}/photos/${photoId}`, { method: 'DELETE' }),
 
   getMechanics: (params = {}) => {
     const q = new URLSearchParams()

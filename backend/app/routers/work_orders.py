@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from decimal import Decimal
 
 from app.database import get_supabase
@@ -16,6 +16,7 @@ from app.schemas.work_order import (
 )
 from app.services.billing import compute_billing, order_payable_total
 from app.services.orders import _next_ot_number, on_order_entregado, register_advance, register_qr_payment
+from app.services.photos import delete_photo, list_photos, photo_counts_by_order, upload_photo
 
 router = APIRouter(prefix="/work-orders", tags=["Órdenes de trabajo"])
 
@@ -69,6 +70,7 @@ def _enrich_order(order: dict) -> dict:
         order["total_amount"] = order.get("price_charged") or 0
     order.setdefault("qr_paid", False)
     order.setdefault("qr_paid_amount", 0)
+    order.setdefault("photo_count", 0)
     return order
 
 
@@ -194,6 +196,10 @@ def list_work_orders(
     for o in result.data or []:
         order = _enrich_order(o)
         orders.append(_attach_pieces(db, order))
+    if orders:
+        counts = photo_counts_by_order(db, [o["id"] for o in orders])
+        for o in orders:
+            o["photo_count"] = counts.get(o["id"], 0)
     if period:
         orders = [o for o in orders if _matches_period(o, period)]
     return orders
@@ -209,16 +215,45 @@ def get_kanban_board(period: str | None = Query(None, description="today | week 
         .execute()
     )
     board = {"en_proceso": [], "terminado": [], "entregado": []}
+    prepared = []
     for raw in result.data or []:
         order = _attach_pieces(db, _enrich_order(raw))
         if not _matches_period(order, period):
             continue
+        prepared.append(order)
+    counts = photo_counts_by_order(db, [o["id"] for o in prepared])
+    for order in prepared:
+        order["photo_count"] = counts.get(order["id"], 0)
         status = order.get("status", "en_proceso")
         if status == "finalizado":
             status = "entregado"
         if status in board:
             board[status].append(order)
     return board
+
+
+@router.get("/{order_id}/photos")
+def get_order_photos(order_id: UUID):
+    """URLs firmadas. Llamar solo al abrir el detalle (lazy)."""
+    db = get_supabase()
+    check = db.table("work_orders").select("id").eq("id", str(order_id)).execute()
+    if not check.data:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    return list_photos(db, str(order_id))
+
+
+@router.post("/{order_id}/photos", status_code=201)
+def add_order_photo(order_id: UUID, file: UploadFile = File(...)):
+    db = get_supabase()
+    check = db.table("work_orders").select("id").eq("id", str(order_id)).execute()
+    if not check.data:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    return upload_photo(db, str(order_id), file)
+
+
+@router.delete("/{order_id}/photos/{photo_id}", status_code=204)
+def remove_order_photo(order_id: UUID, photo_id: UUID):
+    delete_photo(get_supabase(), str(order_id), str(photo_id))
 
 
 @router.get("/{order_id}", response_model=WorkOrderResponse)

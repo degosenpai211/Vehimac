@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
-import { Plus, Pencil, Trash2, Search, Copy, QrCode, MessageCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, Copy, QrCode, MessageCircle, Camera } from 'lucide-react'
 import Modal from '../components/Modal'
 import ClientSearch from '../components/ClientSearch'
 import MechanicSearch from '../components/MechanicSearch'
 import PaymentQrModal from '../components/PaymentQrModal'
+import OrderDetailModal from '../components/OrderDetailModal'
 import Loading from '../components/Loading'
 import { useToast } from '../components/Toast'
 import { api, formatCurrency, formatDate, formatOT, computeBilling, whatsappUrl, formatPhone } from '../services/api'
@@ -46,6 +47,7 @@ export default function Ordenes() {
   const [period, setPeriod] = useState('all')
   const [billingType, setBillingType] = useState('sin_factura')
   const [qrOrder, setQrOrder] = useState(null)
+  const [detailOrder, setDetailOrder] = useState(null)
   const [expandedCols, setExpandedCols] = useState({})
   const { toast } = useToast()
 
@@ -334,9 +336,15 @@ export default function Ordenes() {
             }`}>
               {order.billing_type === 'con_factura' ? 'Con factura' : 'Sin factura'}
             </span>
-            {order.billing_type === 'con_factura' && Number(order.iva_amount) > 0 && (
-              <span className="text-[10px] text-slate-500">IVA {formatCurrency(order.iva_amount)}</span>
-            )}
+              <button
+                type="button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); setDetailOrder(order) }}
+                className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-brand-700 px-1.5 py-0.5 rounded hover:bg-slate-100"
+                title="Ver fotos / detalle"
+              >
+                <Camera size={13} /> {order.photo_count || 0}
+              </button>
           </div>
           <div className="flex flex-wrap gap-x-3 text-xs text-slate-400">
             <span>Inicio: {formatDate(order.entry_date)}</span>
@@ -618,6 +626,20 @@ export default function Ordenes() {
         </form>
       </Modal>
 
+      <OrderDetailModal
+        open={!!detailOrder}
+        order={detailOrder}
+        onClose={() => setDetailOrder(null)}
+        onCountChange={(orderId, count) => {
+          setBoard((prev) => {
+            const next = { ...prev }
+            for (const col of Object.keys(next)) {
+              next[col] = next[col].map((o) => (o.id === orderId ? { ...o, photo_count: count } : o))
+            }
+            return next
+          })
+        }}
+      />
       <PaymentQrModal
         open={!!qrOrder}
         order={qrOrder}
