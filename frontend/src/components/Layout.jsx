@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import {
-  LayoutDashboard, Package, Users, Wrench, DollarSign, Menu, X
+  LayoutDashboard, Package, Users, Wrench, DollarSign, Menu, X, UserCog
 } from 'lucide-react'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Inicio' },
   { to: '/piezas-guardadas', icon: Package, label: 'Piezas guardadas' },
   { to: '/clientes', icon: Users, label: 'Clientes' },
+  { to: '/equipo', icon: UserCog, label: 'Equipo' },
   { to: '/ordenes', icon: Wrench, label: 'Órdenes' },
   { to: '/finanzas', icon: DollarSign, label: 'Finanzas' },
 ]

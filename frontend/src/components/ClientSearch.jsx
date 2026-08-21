@@ -14,6 +14,7 @@ export default function ClientSearch({ value, onChange, onSelect }) {
       api.getClient(value).then((c) => {
         setSelectedName(c.name)
         setQuery(c.name)
+        onSelect?.(c)
       }).catch(() => {})
     }
   }, [value])

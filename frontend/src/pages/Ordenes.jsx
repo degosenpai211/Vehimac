@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
-import { Plus, Pencil, Trash2, Search, Copy } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, Copy, QrCode, MessageCircle } from 'lucide-react'
 import Modal from '../components/Modal'
 import ClientSearch from '../components/ClientSearch'
+import MechanicSearch from '../components/MechanicSearch'
+import PaymentQrModal from '../components/PaymentQrModal'
 import Loading from '../components/Loading'
 import { useToast } from '../components/Toast'
-import { api, formatCurrency, formatDate, formatOT } from '../services/api'
+import { api, formatCurrency, formatDate, formatOT, computeBilling, whatsappUrl, formatPhone } from '../services/api'
 import { STATUS_COLUMNS } from '../utils/status'
 
 const emptyPiece = () => ({
@@ -15,12 +17,22 @@ const emptyPiece = () => ({
   mechanic: '',
 })
 
+const PERIODS = [
+  { id: 'all', label: 'Todas' },
+  { id: 'today', label: 'Hoy' },
+  { id: 'week', label: 'Esta semana' },
+  { id: 'overdue', label: 'Atrasadas' },
+]
+
+const COLUMN_PAGE = 10
+
 export default function Ordenes() {
   const [board, setBoard] = useState({ en_proceso: [], terminado: [], entregado: [] })
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [clientId, setClientId] = useState('')
+  const [clientWhatsapp, setClientWhatsapp] = useState('')
   const [pieces, setPieces] = useState([emptyPiece()])
   const [registerAdvance, setRegisterAdvance] = useState(false)
   const [advanceAmount, setAdvanceAmount] = useState('')
@@ -31,10 +43,18 @@ export default function Ordenes() {
   const [entryTo, setEntryTo] = useState('')
   const [deliveryFrom, setDeliveryFrom] = useState('')
   const [deliveryTo, setDeliveryTo] = useState('')
+  const [period, setPeriod] = useState('all')
+  const [billingType, setBillingType] = useState('sin_factura')
+  const [qrOrder, setQrOrder] = useState(null)
+  const [expandedCols, setExpandedCols] = useState({})
   const { toast } = useToast()
 
-  const total = pieces.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+  const neto = pieces.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+  const billing = computeBilling(neto, billingType)
+  const total = billing.total
   const suggestedAdvance = total > 0 ? Math.round((total / 2) * 100) / 100 : 0
+
+  const hasDateFilters = !!(search || entryFrom || entryTo || deliveryFrom || deliveryTo)
 
   const applySuggestedAdvance = () => {
     if (suggestedAdvance > 0) setAdvanceAmount(String(suggestedAdvance))
@@ -50,7 +70,7 @@ export default function Ordenes() {
       if (deliveryFrom) params.delivery_from = deliveryFrom
       if (deliveryTo) params.delivery_to = deliveryTo
 
-      const kanban = await api.getKanban()
+      const kanban = await api.getKanban(period && period !== 'all' ? { period } : {})
       if (Object.keys(params).length > 0) {
         const filtered = await api.getWorkOrders(params)
         const ids = new Set(filtered.map((o) => o.id))
@@ -69,14 +89,16 @@ export default function Ordenes() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [period])
 
   const openCreate = () => {
     setEditing(null)
     setClientId('')
+    setClientWhatsapp('')
     setPieces([emptyPiece()])
     setRegisterAdvance(false)
     setAdvanceAmount('')
+    setBillingType('sin_factura')
     setEstimatedDelivery('')
     setModalOpen(true)
   }
@@ -86,9 +108,11 @@ export default function Ordenes() {
       const full = await api.getWorkOrder(order.id)
       setEditing(full)
       setClientId(full.client_id || '')
+      setClientWhatsapp(full.client?.whatsapp || full.client?.phone || '')
       setEstimatedDelivery(full.estimated_delivery_date || '')
       setRegisterAdvance(false)
       setAdvanceAmount(full.advance_amount != null ? String(full.advance_amount) : '')
+      setBillingType(full.billing_type || 'sin_factura')
       setPieces(
         full.pieces?.length
           ? full.pieces.map((p) => ({
@@ -141,6 +165,7 @@ export default function Ordenes() {
         client_id: clientId || null,
         estimated_delivery_date: estimatedDelivery || null,
         register_advance: registerAdvance,
+        billing_type: billingType,
         advance_amount: advance,
         pieces: validPieces.map((p) => ({
           part_name: p.part_name || null,
@@ -148,6 +173,9 @@ export default function Ordenes() {
           amount: Number(p.amount) || 0,
           mechanic: p.mechanic || null,
         })),
+      }
+      if (clientId && clientWhatsapp.trim()) {
+        await api.updateClient(clientId, { whatsapp: clientWhatsapp.trim() })
       }
       if (editing) {
         await api.updateWorkOrder(editing.id, payload)
@@ -268,6 +296,9 @@ export default function Ordenes() {
           <div className="flex justify-between items-start gap-2 mb-1">
             <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded">{formatOT(order)}</span>
             <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => setQrOrder(order)} className="p-1.5 rounded-md hover:bg-brand-50 text-brand-600" title="Generar QR">
+                <QrCode size={14} />
+              </button>
               <button onClick={() => openEdit(order)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500">
                 <Pencil size={14} />
               </button>
@@ -281,9 +312,31 @@ export default function Ordenes() {
             <p className="text-xs text-slate-500 mt-1">{order.pieces.length} piezas</p>
           )}
           {order.client && <p className="text-sm text-slate-600 mt-1 font-medium">{order.client.name}</p>}
+          {order.client && whatsappUrl(order.client.whatsapp || order.client.phone) && (
+            <a
+              href={whatsappUrl(order.client.whatsapp || order.client.phone)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 text-xs text-green-700 hover:underline mt-0.5"
+            >
+              <MessageCircle size={12} />
+              {formatPhone(order.client.whatsapp || order.client.phone)}
+            </a>
+          )}
           <div className="flex justify-between items-center py-2 mt-2 border-t border-slate-100 text-sm">
             <span className="text-slate-500 text-xs">{order.mechanic || 'Sin asignar'}</span>
-            <span className="font-bold">{formatCurrency(order.price_charged)}</span>
+            <span className="font-bold">{formatCurrency(order.total_amount || order.price_charged)}</span>
+          </div>
+          <div className="flex flex-wrap gap-1 mb-1">
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+              order.billing_type === 'con_factura' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
+            }`}>
+              {order.billing_type === 'con_factura' ? 'Con factura' : 'Sin factura'}
+            </span>
+            {order.billing_type === 'con_factura' && Number(order.iva_amount) > 0 && (
+              <span className="text-[10px] text-slate-500">IVA {formatCurrency(order.iva_amount)}</span>
+            )}
           </div>
           <div className="flex flex-wrap gap-x-3 text-xs text-slate-400">
             <span>Inicio: {formatDate(order.entry_date)}</span>
@@ -291,6 +344,11 @@ export default function Ordenes() {
           </div>
           {order.advance_recorded && (
             <p className="text-xs text-blue-600 mt-1">Adelanto: {formatCurrency(order.advance_amount)}</p>
+          )}
+          {order.qr_paid && (
+            <p className="text-xs text-emerald-700 mt-1 font-medium">
+              Pagó QR {formatCurrency(order.qr_paid_amount)} {order.qr_bank ? `· ${order.qr_bank}` : ''}
+            </p>
           )}
           <StatusButtons order={order} />
         </div>
@@ -313,6 +371,22 @@ export default function Ordenes() {
       </div>
 
       <div className="card p-3 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {PERIODS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPeriod(p.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                period === p.id
+                  ? 'bg-brand-700 text-white border-brand-700'
+                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <div className="relative">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input className="input pl-10" placeholder="Buscar OT, pieza..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -323,13 +397,34 @@ export default function Ordenes() {
           <div><label className="label text-xs">Entrega desde</label><input type="date" className="input" value={deliveryFrom} onChange={(e) => setDeliveryFrom(e.target.value)} /></div>
           <div><label className="label text-xs">Entrega hasta</label><input type="date" className="input" value={deliveryTo} onChange={(e) => setDeliveryTo(e.target.value)} /></div>
         </div>
-        <button onClick={load} className="btn-secondary btn-sm">Aplicar filtros</button>
+        <div className="flex gap-2">
+          <button onClick={load} className="btn-secondary btn-sm">Aplicar filtros</button>
+          {hasDateFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('')
+                setEntryFrom('')
+                setEntryTo('')
+                setDeliveryFrom('')
+                setDeliveryTo('')
+                setTimeout(() => load(), 0)
+              }}
+              className="btn-secondary btn-sm"
+            >
+              Limpiar filtros
+            </button>
+          )}
+        </div>
       </div>
 
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {STATUS_COLUMNS.map((col) => {
-            const count = board[col.id]?.length || 0
+            const all = board[col.id] || []
+            const count = all.length
+            const showAll = !!expandedCols[col.id]
+            const visible = showAll || count <= COLUMN_PAGE ? all : all.slice(0, COLUMN_PAGE)
             return (
               <div key={col.id} className={`rounded-xl flex flex-col min-h-[360px] overflow-hidden shadow-md ${col.column}`}>
                 <div className={`px-4 py-4 ${col.header}`}>
@@ -354,9 +449,18 @@ export default function Ordenes() {
                           Sin órdenes
                         </div>
                       )}
-                      {(board[col.id] || []).map((order, index) => (
+                      {(visible).map((order, index) => (
                         <OrderCard key={order.id} order={order} index={index} colTheme={col} />
                       ))}
+                      {count > COLUMN_PAGE && !showAll && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedCols((s) => ({ ...s, [col.id]: true }))}
+                          className="w-full text-xs font-semibold py-2 rounded-lg bg-white/70 hover:bg-white text-slate-700"
+                        >
+                          Ver más ({count - COLUMN_PAGE})
+                        </button>
+                      )}
                       {provided.placeholder}
                     </div>
                   )}
@@ -374,7 +478,35 @@ export default function Ordenes() {
         size="xl"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <ClientSearch value={clientId} onChange={setClientId} />
+          <ClientSearch
+            value={clientId}
+            onChange={(id) => {
+              setClientId(id)
+              if (!id) setClientWhatsapp('')
+            }}
+            onSelect={(client) => {
+              if (!client) {
+                setClientWhatsapp('')
+                return
+              }
+              setClientWhatsapp(client.whatsapp || client.phone || '')
+            }}
+          />
+          {clientId && (
+            <div>
+              <label className="label">WhatsApp del cliente</label>
+              <input
+                className="input"
+                inputMode="tel"
+                placeholder="Ej: 70012345"
+                value={clientWhatsapp}
+                onChange={(e) => setClientWhatsapp(e.target.value)}
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Se guarda en la ficha del cliente. En la card de la OT aparece el link a WhatsApp.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="label">Entrega estimada</label>
@@ -398,7 +530,7 @@ export default function Ordenes() {
                 </div>
                 <div className="grid sm:grid-cols-2 gap-2">
                   <input className="input" placeholder="Pieza / parte" value={piece.part_name} onChange={(e) => updatePiece(idx, 'part_name', e.target.value)} />
-                  <input className="input" placeholder="Mecánico" value={piece.mechanic} onChange={(e) => updatePiece(idx, 'mechanic', e.target.value)} />
+                  <MechanicSearch value={piece.mechanic} onChange={(val) => updatePiece(idx, 'mechanic', val)} />
                 </div>
                 <textarea className="input" required rows={2} placeholder="Descripción del trabajo *" value={piece.description} onChange={(e) => updatePiece(idx, 'description', e.target.value)} />
                 <input type="number" min="0" step="0.01" className="input" placeholder="Monto (Bs.)" value={piece.amount} onChange={(e) => updatePiece(idx, 'amount', e.target.value)} />
@@ -406,10 +538,37 @@ export default function Ordenes() {
             ))}
           </div>
 
-          <div className="p-4 bg-brand-50 border border-brand-200 rounded-lg space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="font-medium">Monto total</span>
-              <span className="text-xl font-bold text-brand-800">{formatCurrency(total)}</span>
+          <div className="p-4 bg-brand-50 border border-brand-200 rounded-lg space-y-3">
+            <div>
+              <label className="label">Facturación</label>
+              <div className="flex gap-2">
+                {[
+                  { id: 'sin_factura', label: 'Sin factura' },
+                  { id: 'con_factura', label: 'Con factura (+13% IVA)' },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={!!editing?.delivery_payment_recorded}
+                    onClick={() => setBillingType(opt.id)}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border ${
+                      billingType === opt.id
+                        ? 'bg-brand-700 text-white border-brand-700'
+                        : 'bg-white text-slate-600 border-slate-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between"><span>Neto</span><span className="font-medium">{formatCurrency(billing.neto)}</span></div>
+              <div className="flex justify-between text-slate-600"><span>IVA 13%</span><span>{formatCurrency(billing.iva)}</span></div>
+              <div className="flex justify-between pt-1 border-t border-brand-200">
+                <span className="font-medium">Total</span>
+                <span className="text-xl font-bold text-brand-800">{formatCurrency(billing.total)}</span>
+              </div>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -458,6 +617,16 @@ export default function Ordenes() {
           </div>
         </form>
       </Modal>
+
+      <PaymentQrModal
+        open={!!qrOrder}
+        order={qrOrder}
+        onClose={() => setQrOrder(null)}
+        onPaid={() => {
+          setQrOrder(null)
+          load()
+        }}
+      />
     </div>
   )
 }

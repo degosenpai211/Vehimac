@@ -55,14 +55,34 @@ export const api = {
     const q = new URLSearchParams(params).toString()
     return request(`/work-orders${q ? `?${q}` : ''}`)
   },
-  getKanban: () => request('/work-orders/kanban'),
+  getKanban: (params = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== '' && v != null) q.set(k, v)
+    })
+    const s = q.toString()
+    return request(`/work-orders/kanban${s ? `?${s}` : ''}`)
+  },
   getWorkOrder: (id) => request(`/work-orders/${id}`),
   createWorkOrder: (data) => request('/work-orders', { method: 'POST', body: JSON.stringify(data) }),
   updateWorkOrder: (id, data) => request(`/work-orders/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   updateOrderStatus: (id, status) =>
     request(`/work-orders/${id}/status?status=${status}`, { method: 'PATCH' }),
-  recordAdvance: (id) => request(`/work-orders/${id}/advance`, { method: 'POST' }),
+    recordAdvance: (id) => request(`/work-orders/${id}/advance`, { method: 'POST' }),
+  confirmQrPayment: (id, data) =>
+    request(`/work-orders/${id}/qr-payment`, { method: 'POST', body: JSON.stringify(data) }),
   deleteWorkOrder: (id) => request(`/work-orders/${id}`, { method: 'DELETE' }),
+
+  getMechanics: (params = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== '' && v != null) q.set(k, v)
+    })
+    const s = q.toString()
+    return request(`/mechanics${s ? `?${s}` : ''}`)
+  },
+  createMechanic: (data) => request('/mechanics', { method: 'POST', body: JSON.stringify(data) }),
+  updateMechanic: (id, data) => request(`/mechanics/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   getFinances: (params = {}) => {
     const q = new URLSearchParams(params).toString()
@@ -115,4 +135,19 @@ export function whatsappUrl(phone) {
 export function formatOT(order) {
   if (order?.ot_number) return `OT${order.ot_number}`
   return order?.ot_number === 0 ? 'OT0' : '—'
+}
+
+export function computeBilling(neto, billingType) {
+  const n = Number(neto) || 0
+  if (billingType === 'con_factura' && n > 0) {
+    const iva = Math.round(n * 0.13 * 100) / 100
+    return { neto: n, iva, total: Math.round((n + iva) * 100) / 100 }
+  }
+  return { neto: n, iva: 0, total: n }
+}
+
+export function orderPayable(order) {
+  if (!order) return 0
+  if (order.total_amount != null && Number(order.total_amount) > 0) return Number(order.total_amount)
+  return computeBilling(order.price_charged, order.billing_type).total
 }

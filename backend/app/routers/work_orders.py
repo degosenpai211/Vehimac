@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
@@ -5,13 +6,16 @@ from decimal import Decimal
 
 from app.database import get_supabase
 from app.schemas.work_order import (
+    BillingType,
     OrderItemCreate,
+    QrPaymentCreate,
     WorkOrderCreate,
     WorkOrderResponse,
     WorkOrderStatus,
     WorkOrderUpdate,
 )
-from app.services.orders import _next_ot_number, on_order_entregado, register_advance
+from app.services.billing import compute_billing, order_payable_total
+from app.services.orders import _next_ot_number, on_order_entregado, register_advance, register_qr_payment
 
 router = APIRouter(prefix="/work-orders", tags=["Órdenes de trabajo"])
 
@@ -57,7 +61,59 @@ def _enrich_order(order: dict) -> dict:
         }
     else:
         order["client"] = None
+    if not order.get("billing_type"):
+        order["billing_type"] = "sin_factura"
+    if not order.get("iva_amount"):
+        order["iva_amount"] = 0
+    if not order.get("total_amount"):
+        order["total_amount"] = order.get("price_charged") or 0
+    order.setdefault("qr_paid", False)
+    order.setdefault("qr_paid_amount", 0)
     return order
+
+
+def _matches_period(order: dict, period: str | None) -> bool:
+    if not period or period == "all":
+        return True
+    today = date.today()
+    entry = order.get("entry_date")
+    delivery = order.get("estimated_delivery_date")
+    if isinstance(entry, str):
+        entry = date.fromisoformat(entry[:10]) if entry else None
+    if isinstance(delivery, str):
+        delivery = date.fromisoformat(delivery[:10]) if delivery else None
+
+    if period == "today":
+        if delivery == today:
+            return True
+        if entry and delivery:
+            return entry <= today <= delivery
+        return entry == today
+    if period == "week":
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=6)
+        if delivery and start <= delivery <= end:
+            return True
+        if entry and start <= entry <= end:
+            return True
+        if entry and delivery:
+            return entry <= end and delivery >= start
+        return False
+    if period == "overdue":
+        if order.get("status") == "entregado":
+            return False
+        return bool(delivery and delivery < today)
+    return True
+
+
+def _billing_fields(neto: Decimal, billing_type: str) -> dict:
+    iva, total = compute_billing(neto, billing_type)
+    return {
+        "price_charged": float(neto),
+        "billing_type": billing_type,
+        "iva_amount": float(iva),
+        "total_amount": float(total),
+    }
 
 
 def _resolve_advance(total: Decimal, requested: Decimal | None) -> Decimal:
@@ -100,6 +156,7 @@ def list_work_orders(
     entry_to: str | None = Query(None),
     delivery_from: str | None = Query(None),
     delivery_to: str | None = Query(None),
+    period: str | None = Query(None, description="today | week | overdue | all"),
     sort_by: str = Query("created_at"),
     sort_dir: str = Query("desc"),
     limit: int = Query(100, ge=1, le=500),
@@ -137,11 +194,13 @@ def list_work_orders(
     for o in result.data or []:
         order = _enrich_order(o)
         orders.append(_attach_pieces(db, order))
+    if period:
+        orders = [o for o in orders if _matches_period(o, period)]
     return orders
 
 
 @router.get("/kanban")
-def get_kanban_board():
+def get_kanban_board(period: str | None = Query(None, description="today | week | overdue | all")):
     db = get_supabase()
     result = (
         db.table("work_orders")
@@ -152,6 +211,8 @@ def get_kanban_board():
     board = {"en_proceso": [], "terminado": [], "entregado": []}
     for raw in result.data or []:
         order = _attach_pieces(db, _enrich_order(raw))
+        if not _matches_period(order, period):
+            continue
         status = order.get("status", "en_proceso")
         if status == "finalizado":
             status = "entregado"
@@ -170,8 +231,10 @@ def create_work_order(order: WorkOrderCreate):
     db = get_supabase()
     summary = _summary_from_pieces(order.pieces)
     ot_number = _next_ot_number(db)
-    total = Decimal(str(summary["price_charged"]))
-    advance = _resolve_advance(total, order.advance_amount)
+    neto = Decimal(str(summary["price_charged"]))
+    billing = _billing_fields(neto, order.billing_type.value)
+    payable = Decimal(str(billing["total_amount"]))
+    advance = _resolve_advance(payable, order.advance_amount)
 
     data = {
         "client_id": str(order.client_id) if order.client_id else None,
@@ -179,10 +242,10 @@ def create_work_order(order: WorkOrderCreate):
         "work_description": summary["work_description"],
         "part_description": summary["part_description"],
         "mechanic": summary["mechanic"],
-        "price_charged": summary["price_charged"],
         "advance_amount": float(advance),
         "estimated_delivery_date": order.estimated_delivery_date.isoformat() if order.estimated_delivery_date else None,
         "status": "en_proceso",
+        **billing,
     }
 
     result = db.table("work_orders").insert(data).execute()
@@ -216,17 +279,28 @@ def update_work_order(order_id: UUID, order: WorkOrderUpdate):
     if order.status is not None:
         data["status"] = order.status.value
 
+    if order.billing_type is not None and not old.get("delivery_payment_recorded"):
+        billing_type = order.billing_type.value
+    else:
+        billing_type = old.get("billing_type") or "sin_factura"
+
     if order.pieces:
         summary = _summary_from_pieces(order.pieces)
-        total = Decimal(str(summary["price_charged"]))
-        data.update(summary)
+        neto = Decimal(str(summary["price_charged"]))
+        data.update({k: v for k, v in summary.items() if k != "price_charged"})
+        data.update(_billing_fields(neto, billing_type))
         _insert_pieces(db, oid, order.pieces)
+        payable = Decimal(str(data["total_amount"]))
         if not old.get("advance_recorded"):
             requested = order.advance_amount if order.advance_amount is not None else Decimal(str(old.get("advance_amount", 0)))
-            data["advance_amount"] = float(_resolve_advance(total, requested))
-    elif order.advance_amount is not None and not old.get("advance_recorded"):
-        total = Decimal(str(old.get("price_charged", 0)))
-        data["advance_amount"] = float(_resolve_advance(total, order.advance_amount))
+            data["advance_amount"] = float(_resolve_advance(payable, requested))
+    else:
+        if order.billing_type is not None and not old.get("delivery_payment_recorded"):
+            neto = Decimal(str(old.get("price_charged", 0)))
+            data.update(_billing_fields(neto, billing_type))
+        if order.advance_amount is not None and not old.get("advance_recorded"):
+            payable = order_payable_total({**old, **data})
+            data["advance_amount"] = float(_resolve_advance(payable, order.advance_amount))
 
     if data:
         db.table("work_orders").update(data).eq("id", oid).execute()
@@ -256,6 +330,12 @@ def update_status(order_id: UUID, status: WorkOrderStatus):
         on_order_entregado(order_id)
 
     return _full_order(db, oid)
+
+
+@router.post("/{order_id}/qr-payment", response_model=WorkOrderResponse)
+def confirm_qr_payment(order_id: UUID, body: QrPaymentCreate):
+    register_qr_payment(order_id, body.bank, body.amount)
+    return _full_order(get_supabase(), str(order_id))
 
 
 @router.post("/{order_id}/advance", response_model=WorkOrderResponse)

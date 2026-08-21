@@ -12,6 +12,11 @@ class WorkOrderStatus(str, Enum):
     entregado = "entregado"
 
 
+class BillingType(str, Enum):
+    con_factura = "con_factura"
+    sin_factura = "sin_factura"
+
+
 class OrderItemCreate(BaseModel):
     part_name: str | None = None
     description: str = Field(..., min_length=1)
@@ -36,6 +41,7 @@ class WorkOrderBase(BaseModel):
 
 class WorkOrderCreate(WorkOrderBase):
     pieces: list[OrderItemCreate] = Field(..., min_length=1)
+    billing_type: BillingType = BillingType.sin_factura
     advance_amount: Decimal | None = Field(default=None, ge=0)
     register_advance: bool = False
 
@@ -46,11 +52,17 @@ class WorkOrderCreate(WorkOrderBase):
         return self
 
 
+class QrPaymentCreate(BaseModel):
+    bank: str = Field(..., min_length=1)
+    amount: Decimal | None = Field(default=None, ge=0)
+
+
 class WorkOrderUpdate(BaseModel):
     client_id: UUID | None = None
     estimated_delivery_date: date | None = None
     pieces: list[OrderItemCreate] | None = None
     advance_amount: Decimal | None = Field(default=None, ge=0)
+    billing_type: BillingType | None = None
     register_advance: bool | None = None
     status: WorkOrderStatus | None = None
 
@@ -69,6 +81,9 @@ class WorkOrderResponse(BaseModel):
     work_description: str
     part_description: str | None = None
     price_charged: Decimal
+    billing_type: BillingType = BillingType.sin_factura
+    iva_amount: Decimal = Decimal("0")
+    total_amount: Decimal = Decimal("0")
     mechanic: str | None = None
     status: WorkOrderStatus
     entry_date: date
@@ -77,6 +92,10 @@ class WorkOrderResponse(BaseModel):
     advance_recorded: bool = False
     delivery_payment_recorded: bool = False
     finance_recorded: bool = False
+    qr_paid: bool = False
+    qr_bank: str | None = None
+    qr_paid_amount: Decimal = Decimal("0")
+    qr_paid_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     client: ClientBrief | None = None

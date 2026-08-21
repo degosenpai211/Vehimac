@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <rect width="240" height="240" fill="#fff"/>
+  <rect x="16" y="16" width="208" height="208" fill="none" stroke="#047857" stroke-width="8"/>
+  <rect x="36" y="36" width="56" height="56" fill="#047857"/>
+  <rect x="148" y="36" width="56" height="56" fill="#047857"/>
+  <rect x="36" y="148" width="56" height="56" fill="#047857"/>
+  <rect x="100" y="100" width="40" height="16" fill="#047857"/>
+  <rect x="148" y="148" width="56" height="16" fill="#047857"/>
+  <rect x="108" y="164" width="16" height="40" fill="#047857"/>
+  <rect x="180" y="108" width="24" height="24" fill="#047857"/>
+  <text x="120" y="228" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#047857">QR Banco 2</text>
+</svg>
