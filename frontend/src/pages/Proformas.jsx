@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Pencil, Trash2, FileDown, Check, X, ArrowRight } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, ArrowRight } from 'lucide-react'
 import Modal from '../components/Modal'
 import ClientSearch from '../components/ClientSearch'
 import Loading from '../components/Loading'
@@ -229,8 +229,9 @@ export default function Proformas() {
                     <td className="px-4 py-3 text-slate-500">{formatDate(p.created_at?.slice(0, 10))}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap justify-end gap-1">
+                        {/* PDF / descargar: se reactivan al cobrar el diseño original */}
                         <button type="button" className="btn-secondary btn-sm" onClick={() => openPreview(p)}>
-                          <FileDown size={14} /> PDF
+                          Ver
                         </button>
                         {p.status !== 'convertida' && (
                           <button type="button" className="p-1.5 rounded-md hover:bg-slate-100" onClick={() => openEdit(p)}>
@@ -340,11 +341,11 @@ export default function Proformas() {
       </Modal>
 
       <Modal open={!!preview} onClose={() => setPreview(null)} title={`Proforma Nº ${preview?.number || ''}`} size="xl">
-        <div className="flex justify-end mb-3">
+        {/* <div className="flex justify-end mb-3">
           <button type="button" className="btn-primary" disabled={pdfBusy} onClick={handlePdf}>
             <FileDown size={16} /> {pdfBusy ? 'Generando...' : 'Descargar PDF'}
           </button>
-        </div>
+        </div> */}
         <div className="overflow-auto bg-slate-200 p-2 rounded-lg max-h-[70vh]">
           <div className="origin-top-left scale-[0.55] sm:scale-[0.72] lg:scale-[0.85]" style={{ width: '210mm' }}>
             <ProformaSheet proforma={preview} />

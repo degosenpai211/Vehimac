@@ -1,9 +1,12 @@
-import VehimacLogo from './VehimacLogo'
+// Logo y colores teal se reactivan cuando se cobre el PDF con diseño original.
+// import VehimacLogo from './VehimacLogo'
 
 export const PROFORMA_TEAL = '#008B9B'
 export const PROFORMA_TEAL_DARK = '#007A88'
 export const PROFORMA_ROW = '#E0F2F7'
 
+// Vista simple (sin logo ni teal) hasta cobrar el PDF con el diseño original.
+const LINE = '#111'
 const ROWS = 14
 
 export function lineFigures(row) {
@@ -46,23 +49,23 @@ export function sheetTotals(pieces = []) {
 }
 
 const th = {
-  background: PROFORMA_TEAL,
-  color: '#fff',
+  background: '#fff',
+  color: '#111',
   fontWeight: 700,
   fontSize: 10,
   letterSpacing: 0.4,
   textTransform: 'uppercase',
   padding: '7px 6px',
   textAlign: 'center',
-  border: 'none',
+  border: `1px solid ${LINE}`,
 }
 
 const tdBase = {
   fontSize: 11,
   padding: '5px 6px',
-  borderBottom: '1px solid #c5e4ea',
+  border: `1px solid ${LINE}`,
   height: 22,
-  color: '#1e293b',
+  color: '#111',
 }
 
 export default function ProformaSheet({ proforma, sheetRef }) {
@@ -96,21 +99,21 @@ export default function ProformaSheet({ proforma, sheetRef }) {
           <div style={{ fontSize: 12, marginTop: 6 }}>NIT: 5867649016</div>
           <div style={{ fontSize: 12, marginTop: 2 }}>Dirección: B. Hilandería / C. 23 de Julio Nro 221</div>
         </div>
-        <VehimacLogo size={96} />
+        {/* <VehimacLogo size={96} /> */}
       </div>
 
-      <div style={{ height: 6, background: PROFORMA_TEAL, margin: '12px 0 10px' }} />
+      <div style={{ height: 2, background: LINE, margin: '12px 0 10px' }} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.9fr', gap: 8, fontSize: 12, marginBottom: 4 }}>
         <div>
           <span style={{ fontWeight: 700, color: '#4b5563' }}>Trabajo para</span>
-          <span style={{ marginLeft: 8, borderBottom: '1px solid #cbd5e1', display: 'inline-block', minWidth: 180 }}>
+          <span style={{ marginLeft: 8, borderBottom: `1px solid ${LINE}`, display: 'inline-block', minWidth: 180 }}>
             {client?.name || ''}
           </span>
         </div>
         <div>
           <span style={{ fontWeight: 700, color: '#4b5563' }}>Contacto:</span>
-          <span style={{ marginLeft: 8, borderBottom: '1px solid #cbd5e1', display: 'inline-block', minWidth: 110 }}>
+          <span style={{ marginLeft: 8, borderBottom: `1px solid ${LINE}`, display: 'inline-block', minWidth: 110 }}>
             {contact}
           </span>
         </div>
@@ -147,7 +150,7 @@ export default function ProformaSheet({ proforma, sheetRef }) {
           {padded.map((row, i) => {
             const filled = !!(row?.description || row?.unit_price || row?.quantity)
             const f = lineFigures(row)
-            const bg = i % 2 === 1 ? PROFORMA_ROW : '#fff'
+            const bg = '#fff'
             return (
               <tr key={row.id || `empty-${i}`} style={{ background: bg }}>
                 <td style={{ ...tdBase, textAlign: 'left' }}>{row.description || ''}</td>
@@ -175,16 +178,16 @@ export default function ProformaSheet({ proforma, sheetRef }) {
             <div style={{ fontSize: 12, fontWeight: 800, marginTop: 2 }}>=VEHIMAC=</div>
           </div>
         </div>
-        <div style={{ width: 210, fontSize: 11, fontWeight: 700 }}>
-          <div style={{ display: 'flex', background: PROFORMA_ROW, padding: '6px 8px' }}>
+        <div style={{ width: 210, fontSize: 11, fontWeight: 700, border: `1px solid ${LINE}` }}>
+          <div style={{ display: 'flex', background: '#fff', padding: '6px 8px', borderBottom: `1px solid ${LINE}` }}>
             <span style={{ flex: 1 }}>TOTAL</span>
             <span>{formatBs(totals.gross, true)}</span>
           </div>
-          <div style={{ display: 'flex', padding: '6px 8px', background: '#fff', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', padding: '6px 8px', background: '#fff', borderBottom: `1px solid ${LINE}` }}>
             <span style={{ flex: 1 }}>TOTAL DESC.</span>
             <span>{formatBs(totals.discount)}</span>
           </div>
-          <div style={{ display: 'flex', background: PROFORMA_TEAL, color: '#fff', padding: '7px 8px', fontSize: 12 }}>
+          <div style={{ display: 'flex', background: '#fff', color: '#111', padding: '7px 8px', fontSize: 12 }}>
             <span style={{ flex: 1 }}>TOTAL</span>
             <span>{formatBs(totals.net, true)}</span>
           </div>
