@@ -18,6 +18,7 @@ export default defineConfig({
         orientation: 'portrait-primary',
         start_url: '/',
         lang: 'es',
+        categories: ['business'],
         icons: [
           {
             src: '/favicon.svg',

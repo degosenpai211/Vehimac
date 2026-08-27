@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, TrendingUp, TrendingDown, Wallet } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, TrendingDown, Wallet, QrCode } from 'lucide-react'
 import Modal from '../components/Modal'
+import ProductQrModal from '../components/ProductQrModal'
 import Loading from '../components/Loading'
 import EmptyState from '../components/EmptyState'
 import StatCard from '../components/StatCard'
@@ -16,6 +17,7 @@ export default function Finanzas() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [plasticOpen, setPlasticOpen] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
@@ -80,9 +82,14 @@ export default function Finanzas() {
           <h1 className="text-2xl font-bold">Finanzas</h1>
           <p className="text-sm text-slate-500">Ingresos, gastos y adelantos</p>
         </div>
-        <button onClick={() => { setForm(emptyForm); setModalOpen(true) }} className="btn-primary">
-          <Plus size={18} /> Nuevo registro
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setPlasticOpen(true)} className="btn-secondary">
+            <QrCode size={18} /> QR Plastic 27
+          </button>
+          <button onClick={() => { setForm(emptyForm); setModalOpen(true) }} className="btn-primary">
+            <Plus size={18} /> Nuevo registro
+          </button>
+        </div>
       </div>
 
       {periods && (
@@ -142,6 +149,14 @@ export default function Finanzas() {
         </div>
       )}
 
+      <ProductQrModal
+        open={plasticOpen}
+        onClose={() => setPlasticOpen(false)}
+        onPaid={() => {
+          toast('Venta Plastic 27 registrada', 'success')
+          load()
+        }}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nuevo registro">
         <form onSubmit={handleSubmit} className="space-y-4">
           <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>

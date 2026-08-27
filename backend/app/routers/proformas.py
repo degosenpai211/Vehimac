@@ -1,7 +1,7 @@
 from uuid import UUID
+from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query
-from decimal import Decimal
 
 from app.database import get_supabase
 from app.routers.work_orders import (
@@ -14,6 +14,7 @@ from app.routers.work_orders import (
 from app.schemas.proforma import (
     ProformaConvert,
     ProformaCreate,
+    ProformaItemCreate,
     ProformaResponse,
     ProformaStatus,
     ProformaUpdate,
@@ -57,10 +58,40 @@ def _attach_items(db, proforma: dict) -> dict:
     return proforma
 
 
-def _insert_items(db, proforma_id: str, pieces: list[OrderItemCreate]) -> None:
+def _as_item(piece) -> ProformaItemCreate:
+    if isinstance(piece, ProformaItemCreate):
+        return piece
+    amount = piece.get("amount") or 0
+    unit = piece.get("unit_price")
+    if unit is None or Decimal(str(unit)) == 0:
+        unit = amount
+    return ProformaItemCreate(
+        description=piece.get("description") or "Trabajo",
+        quantity=piece.get("quantity") or 1,
+        unit_price=unit or 0,
+        discount_percent=piece.get("discount_percent") or 0,
+        part_name=piece.get("part_name"),
+        mechanic=piece.get("mechanic"),
+    )
+
+
+def _item_row(item: ProformaItemCreate) -> dict:
+    return {
+        "part_name": item.part_name,
+        "description": item.description,
+        "quantity": float(item.quantity),
+        "unit_price": float(item.unit_price),
+        "discount_percent": float(item.discount_percent),
+        "amount": float(item.amount),
+        "mechanic": item.mechanic,
+    }
+
+
+def _insert_items(db, proforma_id: str, pieces: list) -> None:
     db.table("proforma_items").delete().eq("proforma_id", proforma_id).execute()
     for i, piece in enumerate(pieces):
-        data = piece.model_dump(mode="json")
+        item = _as_item(piece)
+        data = _item_row(item)
         data["proforma_id"] = proforma_id
         data["sort_order"] = i
         db.table("proforma_items").insert(data).execute()
@@ -78,16 +109,16 @@ def _full(db, proforma_id: str) -> dict:
     return _attach_items(db, _enrich(result.data[0]))
 
 
-def _amounts(pieces, billing_type: str) -> dict:
-    summary = _summary_from_pieces(pieces)
-    neto = Decimal(str(summary["price_charged"]))
-    billing = _billing_fields(neto, billing_type)
+def _amounts(pieces) -> dict:
+    items = [_as_item(p) for p in pieces]
+    total = sum((item.amount or Decimal("0")) for item in items)
+    first = items[0]
     return {
-        "description": summary["work_description"],
-        "billing_type": billing_type,
-        "neto_amount": billing["price_charged"],
-        "iva_amount": billing["iva_amount"],
-        "total_amount": billing["total_amount"],
+        "description": first.description,
+        "billing_type": "sin_factura",
+        "neto_amount": float(total),
+        "iva_amount": 0,
+        "total_amount": float(total),
     }
 
 
@@ -109,7 +140,7 @@ def get_proforma(proforma_id: UUID):
 @router.post("", response_model=ProformaResponse, status_code=201)
 def create_proforma(body: ProformaCreate):
     db = get_supabase()
-    amounts = _amounts(body.pieces, body.billing_type.value)
+    amounts = _amounts(body.pieces)
     data = {
         "number": _next_pro_number(db),
         "client_id": str(body.client_id) if body.client_id else None,
@@ -139,19 +170,10 @@ def update_proforma(proforma_id: UUID, body: ProformaUpdate):
     if body.notes is not None:
         data["notes"] = body.notes
     if body.status is not None:
-        if old.get("status") == "convertida":
-            raise HTTPException(status_code=400, detail="La proforma ya fue convertida")
         data["status"] = body.status.value
-
-    billing_type = body.billing_type.value if body.billing_type else old.get("billing_type") or "sin_factura"
     if body.pieces:
         _insert_items(db, pid, body.pieces)
-        data.update(_amounts(body.pieces, billing_type))
-    elif body.billing_type is not None:
-        pieces = old.get("pieces") or []
-        if pieces:
-            mapped = [OrderItemCreate(**{k: p.get(k) for k in ("part_name", "description", "amount", "mechanic")}) for p in pieces]
-            data.update(_amounts(mapped, billing_type))
+        data.update(_amounts(body.pieces))
 
     if data:
         db.table("proformas").update(data).eq("id", pid).execute()
@@ -171,7 +193,7 @@ def convert_proforma(proforma_id: UUID, body: ProformaConvert):
 
     pieces_raw = proforma.get("pieces") or []
     if not pieces_raw:
-        raise HTTPException(status_code=400, detail="La proforma no tiene piezas")
+        raise HTTPException(status_code=400, detail="La proforma no tiene líneas")
     pieces = [
         OrderItemCreate(
             part_name=p.get("part_name"),
@@ -182,8 +204,7 @@ def convert_proforma(proforma_id: UUID, body: ProformaConvert):
         for p in pieces_raw
     ]
     summary = _summary_from_pieces(pieces)
-    billing_type = proforma.get("billing_type") or "sin_factura"
-    billing = _billing_fields(Decimal(str(summary["price_charged"])), billing_type)
+    billing = _billing_fields(Decimal(str(summary["price_charged"])), "sin_factura")
     payable = Decimal(str(billing["total_amount"]))
     advance = _resolve_advance(payable, body.advance_amount)
 

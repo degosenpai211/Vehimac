@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import { Plus, Pencil, Trash2, Search, Copy, QrCode, MessageCircle, Camera } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
 import Modal from '../components/Modal'
 import ClientSearch from '../components/ClientSearch'
 import MechanicSearch from '../components/MechanicSearch'
 import PaymentQrModal from '../components/PaymentQrModal'
 import OrderDetailModal from '../components/OrderDetailModal'
+import RescheduleRow from '../components/RescheduleRow'
 import Loading from '../components/Loading'
 import { useToast } from '../components/Toast'
 import { api, formatCurrency, formatDate, formatOT, computeBilling, whatsappUrl, formatPhone } from '../services/api'
@@ -23,6 +25,13 @@ const PERIODS = [
   { id: 'today', label: 'Hoy' },
   { id: 'week', label: 'Esta semana' },
   { id: 'overdue', label: 'Atrasadas' },
+]
+
+const AGENDA = [
+  { id: 'due_today', label: 'Entregar hoy' },
+  { id: 'tomorrow', label: 'Mañana' },
+  { id: 'day_after', label: 'Pasado' },
+  { id: 'next_week', label: 'Próx. semana' },
 ]
 
 const COLUMN_PAGE = 10
@@ -50,6 +59,7 @@ export default function Ordenes() {
   const [detailOrder, setDetailOrder] = useState(null)
   const [expandedCols, setExpandedCols] = useState({})
   const { toast } = useToast()
+  const [searchParams] = useSearchParams()
 
   const neto = pieces.reduce((s, p) => s + (Number(p.amount) || 0), 0)
   const billing = computeBilling(neto, billingType)
@@ -92,6 +102,11 @@ export default function Ordenes() {
   }
 
   useEffect(() => { load() }, [period])
+
+  useEffect(() => {
+    const p = searchParams.get('period')
+    if (p) setPeriod(p)
+  }, [searchParams])
 
   const openCreate = () => {
     setEditing(null)
@@ -274,7 +289,7 @@ export default function Ordenes() {
             key={b.status}
             type="button"
             onClick={() => moveStatus(order.id, b.status)}
-            className={`flex-1 min-w-[100px] text-white text-xs font-semibold py-2 px-2 rounded-lg ${b.cls}`}
+            className={`flex-1 min-w-[100px] min-h-[44px] text-white text-xs font-semibold py-2 px-2 rounded-lg ${b.cls}`}
           >
             {b.label}
           </button>
@@ -350,6 +365,9 @@ export default function Ordenes() {
             <span>Inicio: {formatDate(order.entry_date)}</span>
             {order.estimated_delivery_date && <span>Entrega: {formatDate(order.estimated_delivery_date)}</span>}
           </div>
+          {order.status !== 'entregado' && (
+            <RescheduleRow order={order} onDone={load} />
+          )}
           {order.advance_recorded && (
             <p className="text-xs text-blue-600 mt-1">Adelanto: {formatCurrency(order.advance_amount)}</p>
           )}
@@ -373,9 +391,14 @@ export default function Ordenes() {
           <h1 className="text-2xl font-bold">Órdenes de trabajo</h1>
           <p className="text-sm text-slate-500">En proceso → Terminado → Entregado</p>
         </div>
-        <button onClick={openCreate} className="btn-primary">
-          <Plus size={18} /> Nueva orden
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={openCreate} className="btn-primary">
+            <Plus size={18} /> Nueva orden
+          </button>
+          <Link to="/proformas?nueva=1" className="btn-secondary">
+            Crear proforma
+          </Link>
+        </div>
       </div>
 
       <div className="card p-3 space-y-3">
@@ -385,7 +408,7 @@ export default function Ordenes() {
               key={p.id}
               type="button"
               onClick={() => setPeriod(p.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+              className={`px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-full text-xs font-semibold border ${
                 period === p.id
                   ? 'bg-brand-700 text-white border-brand-700'
                   : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
@@ -394,6 +417,25 @@ export default function Ordenes() {
               {p.label}
             </button>
           ))}
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">Entrega (prioridad)</p>
+          <div className="flex flex-wrap gap-2">
+            {AGENDA.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPeriod(p.id)}
+                className={`px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-full text-xs font-semibold border ${
+                  period === p.id
+                    ? 'bg-amber-600 text-white border-amber-600'
+                    : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="relative">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />

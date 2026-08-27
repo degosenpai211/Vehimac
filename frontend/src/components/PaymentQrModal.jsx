@@ -4,9 +4,8 @@ import { api, formatCurrency } from '../services/api'
 const QR_KEY = 'vehimac_qr_next'
 
 export const QR_BANKS = [
-  { id: 1, name: 'Banco 1', src: '/qr/banco-1.svg' },
-  { id: 2, name: 'Banco 2', src: '/qr/banco-2.svg' },
-  { id: 3, name: 'Banco 3', src: '/qr/banco-3.svg' },
+  { id: 1, name: 'Mercantil Santa Cruz', src: '/qr/mercantil.jpg' },
+  { id: 2, name: 'Banco Ganadero', src: '/qr/ganadero.jpg' },
 ]
 
 function nextIndex() {
@@ -72,13 +71,13 @@ export default function PaymentQrModal({ open, order, onClose, onPaid }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
-      <div className="relative bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full max-w-md p-5">
-        <h2 className="text-lg font-semibold mb-1">Comprobante / QR</h2>
+      <div className="relative bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full max-w-md p-5 max-h-[92vh] overflow-y-auto">
+        <h2 className="text-lg font-semibold mb-1">QR de servicios / trabajos</h2>
         <p className="text-sm text-slate-500 mb-4">
           {order.ot_number ? `OT${order.ot_number}` : 'Orden'} · {bank.name}
         </p>
-        <div className="flex justify-center bg-slate-50 rounded-xl p-4 border border-slate-200">
-          <img src={bank.src} alt={bank.name} className="w-56 h-56" />
+        <div className="flex justify-center bg-white rounded-xl p-2 border border-slate-200">
+          <img src={bank.src} alt={bank.name} className="w-full max-h-[58vh] object-contain" />
         </div>
 
         {alreadyPaid ? (

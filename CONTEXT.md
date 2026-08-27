@@ -1,6 +1,6 @@
 # Vehimac ERP — Contexto técnico
 
-Documento de continuidad. **Última actualización: 2026-08-21 (fotos OT + Storage).**  
+Documento de continuidad. **Última actualización: 2026-08-26 (agenda de entregas + reprogramar + avisos + iPhone).**  
 En un chat nuevo: pegá o adjuntá este archivo y pedí “seguí desde CONTEXT.md”.
 
 ---
@@ -50,33 +50,24 @@ Deploy breaking: **SQL Supabase → Railway → Vercel**.
 
 - **Adelanto tipeable** (sugerencia 50% con botón). Campo de texto, no `type=number` con max.
 - **IVA 13% se SUMA** (no incluido). Neto 90 → IVA 11,70 → total 101,70. Por **OT completa**, se elige **al crear**. Finanzas usan el **total**. Columnas: `billing_type`, `iva_amount`, `total_amount`. `price_charged` = neto.
-- **Kanban:** chips Hoy / Esta semana / Atrasadas / Todas; **Limpiar filtros**; “Ver más” si >10 cards por columna. Botones En proceso → Terminado **o** Entregado.
+- **Kanban:** chips Hoy / Esta semana / Atrasadas / Todas (igual que antes). **Más** chips de entrega: Entregar hoy / Mañana / Pasado / Próx. semana (fecha de entrega exacta, sin entregadas). En la card: **Reprogramar** +1…+5 días o +1 semana; pregunta si avisar por WhatsApp.
+- **Inicio:** listas Se entregan hoy / mañana / pasado / próxima semana (en proceso y terminado = recoger). El recuadro rojo de vencidas en proceso se mantiene. Botón **Activar avisos** (Notification API, una vez al día). En iPhone hay que **Agregar a pantalla de inicio**; sin eso Safari casi no notifica.
+- **iPhone 11–13:** misma UI que Android. `viewport-fit=cover`, safe-area, `100dvh`, inputs 16px (sin zoom), botones ≥44px. No hay app aparte.
 - **WhatsApp en la card de OT** (no en el QR de clientes). El número vive en `clients.whatsapp`. En el form de OT, al elegir cliente, se puede cargar/editar WhatsApp y se **guarda en el cliente**. Link `wa.me` con helper `whatsappUrl` (+591).
 - **Equipo** (`/equipo`): tabla `mechanics`, agregar/desactivar (no borrar). En cada **pieza** de la OT, autocompletado (`fr` → Franz) y texto libre.
-- **QR de cobro (opción A, modal interno):** ícono QR en la card. Muestra **un** banco. Al cerrar, el siguiente open usa el **siguiente** banco (1→2→3, `localStorage` `vehimac_qr_next`). **No** rota cada 4 s. Botón **Ya pagó** registra ingreso categoría `QR` + flags `qr_paid`, `qr_bank`, `qr_paid_amount`, `qr_paid_at`. Al entregar, el resto = total − adelanto − pago QR.
-- Placeholders: `frontend/public/qr/banco-1.svg` … `banco-3.svg`.
+- **QR de cobro OT (servicios/trabajos):** ícono QR en la card. Solo **Mercantil Santa Cruz** y **Banco Ganadero**, uno a la vez. Al cerrar, el siguiente open usa el otro (`localStorage` `vehimac_qr_next`). **No** rota cada 4 s. **BNB no entra acá.** Botón **Ya pagó** registra ingreso categoría `QR`. JPGs: `frontend/public/qr/mercantil.jpg`, `ganadero.jpg`.
+- **QR Plastic 27:** botón en **Finanzas**. Muestra el QR de **BNB** (`bnb-plastic27.jpg`). **Ya pagó** crea un ingreso categoría `Plastic 27`, sin OT.
 - **Fotos de OT (temporal, Supabase Storage):** bucket `ot-photos`, tabla `order_photos`. Kanban solo muestra ícono cámara + contador (sin descargar imágenes). Al abrir **detalle** se piden URLs firmadas (lazy). Hasta 3 fotos, ~5 MB, jpg/png/webp, cámara del celular. Miniaturas 80×80; tap abre lightbox (flechas, swipe, X / tap afuera). Código en `backend/app/services/photos.py` con comentarios **VPS** (`/var/www/vehimac/uploads/` + Nginx). Hace falta ejecutar `migration_v7.sql`.
-
-### A medias — proformas
-
-Especificación cerrada:
-
-- Cotización = el PDF/comprobante; **proforma** = la fila. **Un solo** menú Proformas (no 3).
-- Dos botones: **Crear OT directa** (Kanban) vs **Crear proforma** (listado).
-- Proforma tiene cliente, piezas, monto, IVA. **Sin número de OT**. Número tipo `PRO-004` (`proformas.number`).
-- Estados: `pendiente` → `aprobada` → `convertida` (o `rechazada`). Convertir pide **solo adelanto**, copia datos, genera OT correlativa, setea `work_order_id`.
-
-**Código:** SQL `migration_v6.sql` + `backend/app/routers/proformas.py` + schemas.  
-**Falta:** registrar el router en `main.py`, página `Proformas.jsx`, ítem sidebar, split de botones en Órdenes, endpoints en `api.js`.
+- **Proformas:** menú `/proformas` + botón “Crear proforma” en Órdenes. El PDF clona la plantilla Excel (teal `#008B9B`, filas intercaladas, nota, firma Marcelo Calvimontes, GRACIAS!!!). Número de pedido = entero (`195`, no `PRO-004`). Líneas: descripción, cantidad, precio unitario, % desc. **Sin IVA en el papel.** Al convertir a OT se copia el neto de cada línea y solo se pide adelanto. Router montado en `main.py`. SQL: `migration_v6.sql` + `migration_v8.sql` (columnas quantity/unit_price/discount_percent). Logo actual es un SVG de aproximación (`VehimacLogo.jsx`); reemplazar por el PNG real cuando lo tengan.
 
 ### No implementado (acordado)
 
 - Auth en el VPS
 - Ruta pública `/orden/:id/pago` para WhatsApp (opción B)
 - Driver Postgres nativo / Nginx / PM2
-- PDF de cotización
 - Cron auto-borrado fotos 90 días
 - Mover fotos de Storage al filesystem del VPS (mismo `order_photos.path`)
+- Logo PNG real de VEHIMAC en la proforma (hoy es SVG aproximado)
 
 ---
 
@@ -90,6 +81,7 @@ Producción **ya tiene** v2 y v3.
 | `migration_v5.sql` | Pago QR (`qr_paid`, `qr_bank`, `qr_paid_amount`, `qr_paid_at`) |
 | `migration_v6.sql` | `proformas` + `proforma_items` |
 | `migration_v7.sql` | `order_photos` + bucket Storage `ot-photos` (crear en SQL Editor) |
+| `migration_v8.sql` | `proforma_items`: `quantity`, `unit_price`, `discount_percent` |
 
 Sin v4/v5, Equipo / IVA / “Ya pagó” fallan.
 
@@ -99,29 +91,19 @@ Nombres en inglés (`work_orders`, no `ordenes`).
 
 ---
 
-## Cómo cargar las imágenes de los QR (bancos)
+## QR de cobro (archivos estáticos)
 
-Hoy son **placeholders SVG** en el repo. El modal lee rutas fijas:
+Vite sirve `frontend/public/` en la raíz. No hay upload: son fotos de los QR del banco.
 
-```js
-// frontend/src/components/PaymentQrModal.jsx
-{ id: 1, name: 'Banco 1', src: '/qr/banco-1.svg' },
-{ id: 2, name: 'Banco 2', src: '/qr/banco-2.svg' },
-{ id: 3, name: 'Banco 3', src: '/qr/banco-3.svg' },
-```
+| Archivo | Banco | Uso |
+|---------|-------|-----|
+| `frontend/public/qr/mercantil.jpg` | Mercantil Santa Cruz | OT / servicios / trabajos |
+| `frontend/public/qr/ganadero.jpg` | Banco Ganadero | OT / servicios / trabajos |
+| `frontend/public/qr/bnb-plastic27.jpg` | BNB | Solo venta **Plastic 27** (Finanzas) |
 
-Vite sirve `frontend/public/` en la raíz. `/qr/banco-1.svg` = archivo `frontend/public/qr/banco-1.svg`.
+Órdenes rotan Mercantil ↔ Ganadero. Finanzas → **QR Plastic 27** abre el BNB.
 
-**Pasos:**
-
-1. Sacá captura o PNG de cada QR de banco (Banco 1, 2, 3).
-2. Guardalos en `frontend/public/qr/` **reemplazando** los SVG, o como `banco-1.png`, `banco-2.png`, `banco-3.png`.
-3. Si usás `.png`: en `PaymentQrModal.jsx` cambiá `src` y el `name` (ej. `'Banco Unión'`).
-4. Commit + push a `master` → Vercel rebuild. En local, `npm run dev` alcanza (archivos de `public/` no necesitan rebuild especial).
-
-No uses Supabase Storage. No hay upload desde la app para estos QR: son **assets estáticos** a propósito (rotación 1-2-3, no aleatoria).
-
-**Fotos del auto/piezas por OT:** todavía no hay UI ni carpeta `uploads/`. Eso es otra feature (máx. 3, desde el celular).
+**Fotos del auto/piezas por OT:** modal de detalle + Storage `ot-photos`. Kanban solo muestra contador.
 
 ---
 
@@ -136,9 +118,9 @@ No uses Supabase Storage. No hay upload desde la app para estos QR: son **assets
 - OT: `MAX(ot_number)+1`, no usa `ot_number_seq`.
 - Cliente: búsqueda por prefijo.
 
-API `/api`: `clients`, `mechanics`, `work-orders` (+ `/kanban`, `/advance`, `/qr-payment`, `/{id}/photos`), `stored-pieces`, `finances`, `dashboard`. `proformas` existe el archivo pero **no** está en `main.py`.
+API `/api`: `clients`, `mechanics`, `work-orders` (+ `/kanban`, `/advance`, `/qr-payment`, `/{id}/photos`), `proformas` (+ `/convert`), `stored-pieces`, `finances`, `dashboard`.
 
-Front: `/`, `/piezas-guardadas`, `/clientes`, `/equipo`, `/ordenes`, `/finanzas`. Falta `/proformas`.
+Front: `/`, `/piezas-guardadas`, `/clientes`, `/equipo`, `/ordenes`, `/proformas`, `/finanzas`.
 
 ---
 
@@ -150,15 +132,14 @@ Fase 1 ~1.700 Bs. Mantenimiento 450 o 600 Bs/mes. VPS + auth + PDF se cotizan ap
 
 ## Pendiente (prioridad)
 
-1. Correr SQL v4, v5, **v7** (fotos). v6 si se termina UI proformas
+1. Correr SQL v4, v5, v6, **v7** (fotos), **v8** (columnas de proforma)
 2. Crear bucket: el `INSERT` de `migration_v7.sql` lo hace; si falla, en Supabase → Storage → New bucket `ot-photos` (privado, 5 MB)
-3. Terminar Proformas (router + página + convertir a OT)
-4. Reemplazar SVG de QR por PNG reales
-5. Path A VPS en rama propia, sin mezclar con features
-6. Cron auto-borrado de fotos a 90 días
-7. Link público de pago QR
-8. README (`VITE_API_URL` sin `/api`)
-9. Auth, PDF, OT1670, proveedores
+3. Reemplazar logo SVG de la proforma por el PNG oficial
+4. Path A VPS en rama propia, sin mezclar con features
+5. Cron auto-borrado de fotos a 90 días
+6. Link público de pago QR
+7. README (`VITE_API_URL` sin `/api`)
+8. Auth, OT1670, proveedores
 
 Deuda: editar cliente borra/recrea autos; OT viejas pueden tener `ot_number` NULL; `product.py` leftover.
 

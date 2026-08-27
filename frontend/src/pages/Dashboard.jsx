@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Users, Wrench, Package, Clock, AlertTriangle } from 'lucide-react'
+import { Users, Wrench, Package, Clock, AlertTriangle, Bell } from 'lucide-react'
 import StatCard from '../components/StatCard'
+import AgendaList from '../components/AgendaList'
 import Loading from '../components/Loading'
 import { useToast } from '../components/Toast'
 import { api, formatCurrency, formatDate } from '../services/api'
 import { ORDER_STATUS } from '../utils/status'
+import {
+  isIosDevice,
+  isStandalonePwa,
+  notificationPermission,
+  notificationsSupported,
+  notifyDeliveries,
+  requestNotificationPermission,
+} from '../utils/notifications'
 
 const PERIOD_LABELS = {
   today: 'Hoy',
@@ -19,6 +28,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [trends, setTrends] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [notifyState, setNotifyState] = useState(notificationPermission())
   const { toast } = useToast()
 
   useEffect(() => {
@@ -27,6 +37,14 @@ export default function Dashboard() {
       .catch((err) => toast(err.message, 'error'))
       .finally(() => setLoading(false))
   }, [toast])
+
+  useEffect(() => {
+    if (!stats?.delivery_agenda) return
+    notifyDeliveries({
+      dueToday: stats.delivery_agenda.due_today || [],
+      dueTomorrow: stats.delivery_agenda.due_tomorrow || [],
+    })
+  }, [stats])
 
   if (loading) return <Loading />
   if (!stats) return <p className="text-red-600">Error al cargar estadísticas</p>
@@ -37,6 +55,40 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold text-slate-900">Panel de control</h1>
         <p className="text-slate-500 text-sm mt-1">Resumen del taller</p>
       </div>
+
+      {notificationsSupported() && notifyState !== 'granted' && (
+        <div className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+          <div className="text-sm text-slate-600">
+            <p className="font-medium text-slate-800">Avisos de entrega</p>
+            <p>
+              {isIosDevice() && !isStandalonePwa()
+                ? 'En iPhone: Compartir → Agregar a pantalla de inicio, y después activá los avisos.'
+                : 'Activá avisos del celular para enterarte al abrir la app si hay entregas hoy o mañana.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary min-h-[44px]"
+            onClick={async () => {
+              const perm = await requestNotificationPermission()
+              setNotifyState(perm)
+              if (perm === 'granted' && stats?.delivery_agenda) {
+                notifyDeliveries({
+                  dueToday: stats.delivery_agenda.due_today || [],
+                  dueTomorrow: stats.delivery_agenda.due_tomorrow || [],
+                })
+              }
+            }}
+          >
+            <Bell size={16} /> Activar avisos
+          </button>
+        </div>
+      )}
+
+      <AgendaList title="Se entregan hoy" items={stats.delivery_agenda?.due_today} tone="red" period="due_today" />
+      <AgendaList title="Se entregan mañana" items={stats.delivery_agenda?.due_tomorrow} tone="amber" period="tomorrow" />
+      <AgendaList title="Pasado mañana" items={stats.delivery_agenda?.due_day_after} tone="blue" period="day_after" />
+      <AgendaList title="Próxima semana" items={stats.delivery_agenda?.due_next_week} tone="slate" period="next_week" />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
         <StatCard title="Clientes" value={stats.total_clients} icon={Users} />

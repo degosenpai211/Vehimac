@@ -92,6 +92,21 @@ export const api = {
   deleteOrderPhoto: (orderId, photoId) =>
     request(`/work-orders/${orderId}/photos/${photoId}`, { method: 'DELETE' }),
 
+  getProformas: (params = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== '' && v != null) q.set(k, v)
+    })
+    const s = q.toString()
+    return request(`/proformas${s ? `?${s}` : ''}`)
+  },
+  getProforma: (id) => request(`/proformas/${id}`),
+  createProforma: (data) => request('/proformas', { method: 'POST', body: JSON.stringify(data) }),
+  updateProforma: (id, data) => request(`/proformas/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  convertProforma: (id, data) =>
+    request(`/proformas/${id}/convert`, { method: 'POST', body: JSON.stringify(data) }),
+  deleteProforma: (id) => request(`/proformas/${id}`, { method: 'DELETE' }),
+
   getMechanics: (params = {}) => {
     const q = new URLSearchParams()
     Object.entries(params).forEach(([k, v]) => {
@@ -143,12 +158,13 @@ export function formatPhone(phone) {
   return phone
 }
 
-export function whatsappUrl(phone) {
+export function whatsappUrl(phone, text) {
   if (!phone) return null
   const digits = phone.replace(/\D/g, '')
   if (!digits) return null
   const normalized = digits.startsWith('591') ? digits : `591${digits.replace(/^0/, '')}`
-  return `https://wa.me/${normalized}`
+  const q = text ? `?text=${encodeURIComponent(text)}` : ''
+  return `https://wa.me/${normalized}${q}`
 }
 
 export function formatOT(order) {

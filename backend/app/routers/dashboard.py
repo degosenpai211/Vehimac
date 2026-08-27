@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Query
@@ -31,6 +31,62 @@ def _sum_finances(records: list) -> dict:
         "balance": float(ingresos - gastos),
         "count_ingresos": sum(1 for f in records if f["type"] == "ingreso"),
         "count_gastos": sum(1 for f in records if f["type"] == "gasto"),
+    }
+
+
+def _as_date(value):
+    if not value:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _order_brief(row: dict) -> dict:
+    client = row.get("clients")
+    return {
+        "id": row["id"],
+        "ot_number": row.get("ot_number"),
+        "work_description": row.get("work_description"),
+        "status": row.get("status"),
+        "estimated_delivery_date": row.get("estimated_delivery_date"),
+        "client_name": client["name"] if client else None,
+    }
+
+
+def _delivery_agenda(db, today: date) -> dict:
+    result = (
+        db.table("work_orders")
+        .select("id, ot_number, work_description, status, estimated_delivery_date, clients(name)")
+        .in_("status", ["en_proceso", "terminado"])
+        .execute()
+    )
+    due_today, tomorrow, day_after, next_week = [], [], [], []
+    t1 = today + timedelta(days=1)
+    t2 = today + timedelta(days=2)
+    next_mon = today + timedelta(days=(7 - today.weekday()) or 7)
+    next_sun = next_mon + timedelta(days=6)
+    for row in result.data or []:
+        d = _as_date(row.get("estimated_delivery_date"))
+        if not d:
+            continue
+        item = _order_brief(row)
+        if d == today:
+            due_today.append(item)
+        elif d == t1:
+            tomorrow.append(item)
+        elif d == t2:
+            day_after.append(item)
+        elif next_mon <= d <= next_sun:
+            next_week.append(item)
+    return {
+        "due_today": due_today,
+        "due_tomorrow": tomorrow,
+        "due_day_after": day_after,
+        "due_next_week": next_week,
     }
 
 
@@ -96,6 +152,7 @@ def get_dashboard_stats():
         "orders_by_status": orders_by_status,
         "overdue_orders": overdue_list,
         "stale_stored_pieces": stale_list,
+        "delivery_agenda": _delivery_agenda(db, today),
     }
 
 

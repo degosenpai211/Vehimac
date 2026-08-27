@@ -105,6 +105,18 @@ def _matches_period(order: dict, period: str | None) -> bool:
         if order.get("status") == "entregado":
             return False
         return bool(delivery and delivery < today)
+    # Agenda por fecha de entrega (no reemplaza Hoy / semana / atrasadas)
+    if period in ("due_today", "tomorrow", "day_after", "next_week"):
+        if order.get("status") == "entregado" or not delivery:
+            return False
+        if period == "due_today":
+            return delivery == today
+        if period == "tomorrow":
+            return delivery == today + timedelta(days=1)
+        if period == "day_after":
+            return delivery == today + timedelta(days=2)
+        next_mon = today + timedelta(days=(7 - today.weekday()) or 7)
+        return next_mon <= delivery <= next_mon + timedelta(days=6)
     return True
 
 
@@ -158,7 +170,7 @@ def list_work_orders(
     entry_to: str | None = Query(None),
     delivery_from: str | None = Query(None),
     delivery_to: str | None = Query(None),
-    period: str | None = Query(None, description="today | week | overdue | all"),
+    period: str | None = Query(None, description="today | week | overdue | all | due_today | tomorrow | day_after | next_week"),
     sort_by: str = Query("created_at"),
     sort_dir: str = Query("desc"),
     limit: int = Query(100, ge=1, le=500),
@@ -206,7 +218,7 @@ def list_work_orders(
 
 
 @router.get("/kanban")
-def get_kanban_board(period: str | None = Query(None, description="today | week | overdue | all")):
+def get_kanban_board(period: str | None = Query(None, description="today | week | overdue | all | due_today | tomorrow | day_after | next_week")):
     db = get_supabase()
     result = (
         db.table("work_orders")
