@@ -10,7 +10,7 @@ import OrderDetailModal from '../components/OrderDetailModal'
 import RescheduleRow from '../components/RescheduleRow'
 import Loading from '../components/Loading'
 import { useToast } from '../components/Toast'
-import { api, formatCurrency, formatDate, formatOT, computeBilling, whatsappUrl, formatPhone, openWhatsApp } from '../services/api'
+import { api, formatCurrency, formatDate, formatOT, computeBilling, whatsappUrl, openWhatsApp } from '../services/api'
 import { STATUS_COLUMNS } from '../utils/status'
 
 const emptyPiece = () => ({
@@ -324,6 +324,21 @@ export default function Ordenes() {
           <div className="flex justify-between items-start gap-2 mb-1">
             <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded">{formatOT(order)}</span>
             <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+              {whatsappUrl(waPhone) && (
+                <button
+                  type="button"
+                  title="WhatsApp"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openWhatsApp(waPhone, waText)
+                  }}
+                  className="p-2 rounded-md hover:bg-green-50 text-green-600 min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
+                >
+                  <MessageCircle size={16} />
+                </button>
+              )}
               <button type="button" onClick={() => setQrOrder(order)} className="p-2 rounded-md hover:bg-brand-50 text-brand-600 min-h-[44px] min-w-[44px] inline-flex items-center justify-center" title="Generar QR">
                 <QrCode size={16} />
               </button>
@@ -340,24 +355,6 @@ export default function Ordenes() {
             <p className="text-xs text-slate-500 mt-1">{order.pieces.length} piezas</p>
           )}
           {order.client && <p className="text-sm text-slate-600 mt-1 font-medium">{order.client.name}</p>}
-          {whatsappUrl(waPhone) ? (
-            <button
-              type="button"
-              onMouseDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation()
-                e.preventDefault()
-                openWhatsApp(waPhone, waText)
-              }}
-              className="mt-2 w-full inline-flex items-center justify-center gap-2 min-h-[44px] rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold"
-            >
-              <MessageCircle size={16} />
-              WhatsApp {formatPhone(waPhone)}
-            </button>
-          ) : (
-            <p className="mt-2 text-xs text-slate-400">Sin WhatsApp — cargalo en el cliente</p>
-          )}
           <div className="flex justify-between items-center py-2 mt-2 border-t border-slate-100 text-sm">
             <span className="text-slate-500 text-xs">{order.mechanic || 'Sin asignar'}</span>
             <span className="font-bold">{formatCurrency(order.total_amount || order.price_charged)}</span>
