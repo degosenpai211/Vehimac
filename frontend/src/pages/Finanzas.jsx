@@ -5,6 +5,7 @@ import ProductQrModal from '../components/ProductQrModal'
 import Loading from '../components/Loading'
 import EmptyState from '../components/EmptyState'
 import StatCard from '../components/StatCard'
+import FinanceChart from '../components/FinanceChart'
 import { useToast } from '../components/Toast'
 import { api, formatCurrency, formatDate } from '../services/api'
 
@@ -14,6 +15,7 @@ const TYPE_STYLES = { ingreso: 'bg-green-100 text-green-800', gasto: 'bg-red-100
 export default function Finanzas() {
   const [records, setRecords] = useState([])
   const [periods, setPeriods] = useState(null)
+  const [trends, setTrends] = useState(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -26,12 +28,14 @@ export default function Finanzas() {
     setLoading(true)
     try {
       const params = filter ? { type: filter } : {}
-      const [list, periodData] = await Promise.all([
+      const [list, periodData, trendData] = await Promise.all([
         api.getFinances(params),
         api.getPeriodSummaries(),
+        api.getFinanceTrends(),
       ])
       setRecords(list)
       setPeriods(periodData)
+      setTrends(trendData)
     } catch (err) {
       toast(err.message, 'error')
     } finally {
@@ -80,7 +84,7 @@ export default function Finanzas() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Finanzas</h1>
-          <p className="text-sm text-slate-500">Ingresos, gastos y adelantos</p>
+          <p className="text-sm text-slate-500">Ingresos, gastos y comparativa del día, la semana y el mes</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setPlasticOpen(true)} className="btn-secondary">
@@ -99,6 +103,8 @@ export default function Finanzas() {
           <PeriodCard data={periods.last_month} />
         </div>
       )}
+
+      <FinanceChart trends={trends} />
 
       {periods?.today && (
         <div className="grid grid-cols-3 gap-3">
