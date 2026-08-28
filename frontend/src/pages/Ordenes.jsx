@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
-import { Plus, Pencil, Trash2, Search, Copy, QrCode, MessageCircle, Camera } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, Copy, QrCode, MessageCircle, Camera, GripVertical } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Modal from '../components/Modal'
 import ClientSearch from '../components/ClientSearch'
@@ -10,7 +10,7 @@ import OrderDetailModal from '../components/OrderDetailModal'
 import RescheduleRow from '../components/RescheduleRow'
 import Loading from '../components/Loading'
 import { useToast } from '../components/Toast'
-import { api, formatCurrency, formatDate, formatOT, computeBilling, whatsappUrl, formatPhone } from '../services/api'
+import { api, formatCurrency, formatDate, formatOT, computeBilling, whatsappUrl, formatPhone, openWhatsApp } from '../services/api'
 import { STATUS_COLUMNS } from '../utils/status'
 
 const emptyPiece = () => ({
@@ -298,29 +298,40 @@ export default function Ordenes() {
     )
   }
 
-  const OrderCard = ({ order, index, colTheme }) => (
+  const OrderCard = ({ order, index, colTheme }) => {
+    const waPhone = order.client?.whatsapp || order.client?.phone
+    const waText = `Hola, te escribo por la ${formatOT(order)}${order.work_description ? ` (${order.work_description})` : ''}.`
+    return (
     <Draggable draggableId={order.id} index={index}>
       {(provided, snapshot) => (
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
-          {...provided.dragHandleProps}
           style={provided.draggableProps.style}
-          className={`bg-white rounded-lg border border-slate-200 shadow-sm mb-3 p-4 ${colTheme.cardBorder} ${
+          className={`bg-white rounded-lg border border-slate-200 shadow-sm mb-3 ${colTheme.cardBorder} ${
             snapshot.isDragging ? 'shadow-xl ring-2 ring-brand-400' : 'hover:shadow-md'
           }`}
         >
+          <div className="flex">
+            <div
+              {...provided.dragHandleProps}
+              className="shrink-0 px-1.5 flex items-center text-slate-300 touch-none min-w-[36px]"
+              aria-label="Mover orden"
+            >
+              <GripVertical size={18} />
+            </div>
+            <div className="flex-1 min-w-0 p-3 pl-1">
           <div className="flex justify-between items-start gap-2 mb-1">
             <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded">{formatOT(order)}</span>
             <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-              <button onClick={() => setQrOrder(order)} className="p-1.5 rounded-md hover:bg-brand-50 text-brand-600" title="Generar QR">
-                <QrCode size={14} />
+              <button type="button" onClick={() => setQrOrder(order)} className="p-2 rounded-md hover:bg-brand-50 text-brand-600 min-h-[44px] min-w-[44px] inline-flex items-center justify-center" title="Generar QR">
+                <QrCode size={16} />
               </button>
-              <button onClick={() => openEdit(order)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500">
-                <Pencil size={14} />
+              <button type="button" onClick={() => openEdit(order)} className="p-2 rounded-md hover:bg-slate-100 text-slate-500 min-h-[44px] min-w-[44px] inline-flex items-center justify-center">
+                <Pencil size={16} />
               </button>
-              <button onClick={() => handleDelete(order.id)} className="p-1.5 rounded-md hover:bg-red-50 text-red-500">
-                <Trash2 size={14} />
+              <button type="button" onClick={() => handleDelete(order.id)} className="p-2 rounded-md hover:bg-red-50 text-red-500 min-h-[44px] min-w-[44px] inline-flex items-center justify-center">
+                <Trash2 size={16} />
               </button>
             </div>
           </div>
@@ -329,17 +340,23 @@ export default function Ordenes() {
             <p className="text-xs text-slate-500 mt-1">{order.pieces.length} piezas</p>
           )}
           {order.client && <p className="text-sm text-slate-600 mt-1 font-medium">{order.client.name}</p>}
-          {order.client && whatsappUrl(order.client.whatsapp || order.client.phone) && (
-            <a
-              href={whatsappUrl(order.client.whatsapp || order.client.phone)}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 text-xs text-green-700 hover:underline mt-0.5"
+          {whatsappUrl(waPhone) ? (
+            <button
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                openWhatsApp(waPhone, waText)
+              }}
+              className="mt-2 w-full inline-flex items-center justify-center gap-2 min-h-[44px] rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold"
             >
-              <MessageCircle size={12} />
-              {formatPhone(order.client.whatsapp || order.client.phone)}
-            </a>
+              <MessageCircle size={16} />
+              WhatsApp {formatPhone(waPhone)}
+            </button>
+          ) : (
+            <p className="mt-2 text-xs text-slate-400">Sin WhatsApp — cargalo en el cliente</p>
           )}
           <div className="flex justify-between items-center py-2 mt-2 border-t border-slate-100 text-sm">
             <span className="text-slate-500 text-xs">{order.mechanic || 'Sin asignar'}</span>
@@ -355,7 +372,7 @@ export default function Ordenes() {
                 type="button"
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); setDetailOrder(order) }}
-                className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-brand-700 px-1.5 py-0.5 rounded hover:bg-slate-100"
+                className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-brand-700 px-1.5 py-2 min-h-[44px] rounded hover:bg-slate-100"
                 title="Ver fotos / detalle"
               >
                 <Camera size={13} /> {order.photo_count || 0}
@@ -377,10 +394,13 @@ export default function Ordenes() {
             </p>
           )}
           <StatusButtons order={order} />
+            </div>
+          </div>
         </div>
       )}
     </Draggable>
-  )
+    )
+  }
 
   if (loading) return <Loading />
 
@@ -476,7 +496,7 @@ export default function Ordenes() {
             const showAll = !!expandedCols[col.id]
             const visible = showAll || count <= COLUMN_PAGE ? all : all.slice(0, COLUMN_PAGE)
             return (
-              <div key={col.id} className={`rounded-xl flex flex-col min-h-[360px] overflow-hidden shadow-md ${col.column}`}>
+              <div key={col.id} className={`rounded-xl flex flex-col min-h-[360px] shadow-md ${col.column}`}>
                 <div className={`px-4 py-4 ${col.header}`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">

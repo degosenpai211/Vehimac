@@ -158,13 +158,38 @@ export function formatPhone(phone) {
   return phone
 }
 
-export function whatsappUrl(phone, text) {
+export function whatsappDigits(phone) {
   if (!phone) return null
-  const digits = phone.replace(/\D/g, '')
+  const digits = String(phone).replace(/\D/g, '')
   if (!digits) return null
-  const normalized = digits.startsWith('591') ? digits : `591${digits.replace(/^0/, '')}`
+  return digits.startsWith('591') ? digits : `591${digits.replace(/^0/, '')}`
+}
+
+export function whatsappUrl(phone, text) {
+  const normalized = whatsappDigits(phone)
+  if (!normalized) return null
   const q = text ? `?text=${encodeURIComponent(text)}` : ''
   return `https://wa.me/${normalized}${q}`
+}
+
+export function openWhatsApp(phone, text) {
+  const url = whatsappUrl(phone, text)
+  if (!url) return false
+  const digits = whatsappDigits(phone)
+  const standalone = typeof window !== 'undefined' && (
+    window.navigator.standalone === true
+    || window.matchMedia('(display-mode: standalone)').matches
+  )
+  const ios = typeof navigator !== 'undefined' && (
+    /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  )
+  if (standalone || ios) {
+    window.location.href = `whatsapp://send?phone=${digits}${text ? `&text=${encodeURIComponent(text)}` : ''}`
+    return true
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+  return true
 }
 
 export function formatOT(order) {

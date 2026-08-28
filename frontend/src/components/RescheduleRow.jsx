@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { CalendarClock } from 'lucide-react'
-import { api, formatDate, formatOT, whatsappUrl } from '../services/api'
+import { api, formatDate, formatOT, openWhatsApp } from '../services/api'
 import { useToast } from './Toast'
 
 const STEPS = [
@@ -36,12 +36,9 @@ export default function RescheduleRow({ order, onDone }) {
       setOpen(false)
       onDone?.()
       const phone = order.client?.whatsapp || order.client?.phone
-      const wa = whatsappUrl(
-        phone,
-        `Hola, la ${formatOT(order)} se reprograma: nueva fecha de entrega ${formatDate(next)}${from ? ` (antes ${formatDate(from)})` : ''}.`,
-      )
-      if (wa && confirm('¿Avisar al cliente por WhatsApp?')) {
-        window.open(wa, '_blank', 'noopener,noreferrer')
+      const msg = `Hola, la ${formatOT(order)} se reprograma: nueva fecha de entrega ${formatDate(next)}${from ? ` (antes ${formatDate(from)})` : ''}.`
+      if (phone && confirm('¿Avisar al cliente por WhatsApp?')) {
+        openWhatsApp(phone, msg)
       }
     } catch (err) {
       toast(err.message, 'error')

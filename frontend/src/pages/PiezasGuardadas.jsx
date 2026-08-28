@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Search, MessageCircle, ExternalLink } from 'lucide-react'
+import { Search, MessageCircle } from 'lucide-react'
 import Loading from '../components/Loading'
 import EmptyState from '../components/EmptyState'
 import { useToast } from '../components/Toast'
-import { api, formatCurrency, formatDate, formatPhone, whatsappUrl, formatOT } from '../services/api'
+import { api, formatCurrency, formatDate, formatPhone, openWhatsApp, whatsappUrl, formatOT } from '../services/api'
 
 export default function PiezasGuardadas() {
   const [pieces, setPieces] = useState([])
@@ -64,7 +64,7 @@ export default function PiezasGuardadas() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {pieces.map((p) => {
-            const wa = p.client ? whatsappUrl(p.client.whatsapp || p.client.phone) : null
+            const waPhone = p.client?.whatsapp || p.client?.phone
             return (
               <div key={p.id} className="card p-4">
                 <div className="flex justify-between items-start mb-1">
@@ -85,17 +85,15 @@ export default function PiezasGuardadas() {
                   <div className="mt-3 pt-3 border-t border-slate-100">
                     <p className="font-medium text-sm">{p.client.name}</p>
                     <p className="text-xs text-slate-500">{formatPhone(p.client.phone || p.client.whatsapp)}</p>
-                    {wa && (
-                      <a
-                        href={wa}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 mt-2 text-sm text-green-600 hover:underline"
+                    {whatsappUrl(waPhone) ? (
+                      <button
+                        type="button"
+                        onClick={() => openWhatsApp(waPhone, `Hola, te escribo por la ${formatOT(p)} (pieza lista para recoger).`)}
+                        className="mt-2 w-full inline-flex items-center justify-center gap-2 min-h-[44px] rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold"
                       >
-                        <MessageCircle size={14} /> Escribir por WhatsApp
-                        <ExternalLink size={12} />
-                      </a>
-                    )}
+                        <MessageCircle size={16} /> WhatsApp
+                      </button>
+                    ) : null}
                   </div>
                 )}
               </div>

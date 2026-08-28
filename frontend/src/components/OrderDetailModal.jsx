@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Trash2 } from 'lucide-react'
+import { Camera, Trash2, MessageCircle } from 'lucide-react'
 import Modal from './Modal'
 import PhotoLightbox from './PhotoLightbox'
 import { useToast } from './Toast'
-import { api, formatCurrency, formatDate, formatOT } from '../services/api'
+import { api, formatCurrency, formatDate, formatOT, formatPhone, openWhatsApp, whatsappUrl } from '../services/api'
 
 export default function OrderDetailModal({ order, open, onClose, onCountChange }) {
   const [photos, setPhotos] = useState([])
@@ -77,6 +77,18 @@ export default function OrderDetailModal({ order, open, onClose, onCountChange }
             {order.client && <p className="text-sm text-slate-600 mt-1">{order.client.name}</p>}
             <p className="text-sm font-bold mt-1">{formatCurrency(order.total_amount || order.price_charged)}</p>
             <p className="text-xs text-slate-400 mt-1">Inicio: {formatDate(order.entry_date)}</p>
+            {whatsappUrl(order.client?.whatsapp || order.client?.phone) && (
+              <button
+                type="button"
+                onClick={() => openWhatsApp(
+                  order.client.whatsapp || order.client.phone,
+                  `Hola, te escribo por la ${formatOT(order)}.`,
+                )}
+                className="mt-3 w-full inline-flex items-center justify-center gap-2 min-h-[44px] rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold"
+              >
+                <MessageCircle size={16} /> WhatsApp {formatPhone(order.client.whatsapp || order.client.phone)}
+              </button>
+            )}
           </div>
 
           <div>

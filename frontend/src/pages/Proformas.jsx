@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Pencil, Trash2, FileDown, Check, X, ArrowRight } from 'lucide-react'
+import { Plus, Pencil, Trash2, MessageCircle, Check, X, ArrowRight, Eye } from 'lucide-react'
 import Modal from '../components/Modal'
 import ClientSearch from '../components/ClientSearch'
 import Loading from '../components/Loading'
@@ -8,7 +8,7 @@ import EmptyState from '../components/EmptyState'
 import ProformaSheet, { formatBs, lineFigures, sheetTotals } from '../components/ProformaSheet'
 import { useToast } from '../components/Toast'
 import { api, formatDate } from '../services/api'
-import { downloadProformaPdf } from '../services/proformaPdf'
+import { shareProformaPdf } from '../services/proformaPdf'
 
 const emptyLine = () => ({
   description: '',
@@ -171,12 +171,17 @@ export default function Proformas() {
     }
   }
 
-  const handlePdf = async () => {
+  const handleWhatsApp = async () => {
+    if (!preview) return
     setPdfBusy(true)
     try {
-      await downloadProformaPdf(pdfRef.current, preview?.number)
+      const phone = preview.client?.whatsapp || preview.client?.phone
+      const total = formatBs(preview.total_amount)
+      const text = `Hola, te envío la proforma VEHIMAC Nº ${preview.number}. Total ${total} (sin IVA).`
+      await shareProformaPdf(pdfRef.current, { number: preview.number, phone, text })
     } catch (err) {
-      toast(err.message || 'No se pudo generar el PDF', 'error')
+      if (err?.name === 'AbortError') return
+      toast(err.message || 'No se pudo enviar por WhatsApp', 'error')
     } finally {
       setPdfBusy(false)
     }
@@ -193,7 +198,7 @@ export default function Proformas() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Proformas</h1>
-          <p className="text-sm text-slate-500">Cotización en PDF. Sin IVA en el papel. Al convertir se crea la OT.</p>
+          <p className="text-sm text-slate-500">Cotización en PDF por WhatsApp. Sin IVA en el papel. Al convertir se crea la OT.</p>
         </div>
         <button onClick={openCreate} className="btn-primary">
           <Plus size={18} /> Crear proforma
@@ -201,7 +206,7 @@ export default function Proformas() {
       </div>
 
       {rows.length === 0 ? (
-        <EmptyState title="Sin proformas" description="Creá la primera para generar el PDF con el formato de VEHIMAC." />
+        <EmptyState title="Sin proformas" description="Creá la primera para enviarla por WhatsApp con el formato de VEHIMAC." />
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -229,9 +234,11 @@ export default function Proformas() {
                     <td className="px-4 py-3 text-slate-500">{formatDate(p.created_at?.slice(0, 10))}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap justify-end gap-1">
-                        {/* PDF / descargar: se reactivan al cobrar el diseño original */}
                         <button type="button" className="btn-secondary btn-sm" onClick={() => openPreview(p)}>
-                          <FileDown size={14} /> PDF
+                          <Eye size={14} /> Ver
+                        </button>
+                        <button type="button" className="btn min-h-[44px] sm:min-h-0 px-3 py-2 bg-green-600 text-white hover:bg-green-700" onClick={() => openPreview(p)}>
+                          <MessageCircle size={14} /> WhatsApp
                         </button>
                         {p.status !== 'convertida' && (
                           <button type="button" className="p-1.5 rounded-md hover:bg-slate-100" onClick={() => openEdit(p)}>
@@ -342,8 +349,8 @@ export default function Proformas() {
 
       <Modal open={!!preview} onClose={() => setPreview(null)} title={`Proforma Nº ${preview?.number || ''}`} size="xl">
         <div className="flex justify-end mb-3">
-          <button type="button" className="btn-primary" disabled={pdfBusy} onClick={handlePdf}>
-            <FileDown size={16} /> {pdfBusy ? 'Generando...' : 'Descargar PDF'}
+          <button type="button" className="btn min-h-[44px] bg-green-600 text-white hover:bg-green-700" disabled={pdfBusy} onClick={handleWhatsApp}>
+            <MessageCircle size={16} /> {pdfBusy ? 'Preparando PDF...' : 'Enviar por WhatsApp'}
           </button>
         </div>
         <div className="overflow-auto bg-slate-200 p-2 rounded-lg max-h-[70vh]">
@@ -351,7 +358,7 @@ export default function Proformas() {
             <ProformaSheet proforma={preview} />
           </div>
         </div>
-        <div style={{ position: 'fixed', left: 0, top: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
+        <div style={{ position: 'fixed', left: 0, top: 0, zIndex: -1, pointerEvents: 'none' }}>
           <ProformaSheet proforma={preview} sheetRef={pdfRef} />
         </div>
       </Modal>
