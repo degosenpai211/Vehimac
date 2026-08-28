@@ -1,7 +1,7 @@
 from uuid import UUID
 from decimal import Decimal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from app.database import get_supabase
 from app.routers.work_orders import (
@@ -21,6 +21,7 @@ from app.schemas.proforma import (
 )
 from app.schemas.work_order import OrderItemCreate
 from app.services.orders import _next_ot_number, register_advance
+from app.services.proforma_pdf import upload_proforma_pdf
 
 router = APIRouter(prefix="/proformas", tags=["Proformas"])
 
@@ -135,6 +136,13 @@ def list_proformas(status: ProformaStatus | None = Query(None)):
 @router.get("/{proforma_id}", response_model=ProformaResponse)
 def get_proforma(proforma_id: UUID):
     return _full(get_supabase(), str(proforma_id))
+
+
+@router.post("/{proforma_id}/pdf")
+def share_proforma_pdf(proforma_id: UUID, file: UploadFile = File(...)):
+    db = get_supabase()
+    _full(db, str(proforma_id))
+    return upload_proforma_pdf(db, str(proforma_id), file)
 
 
 @router.post("", response_model=ProformaResponse, status_code=201)

@@ -106,6 +106,22 @@ export const api = {
   convertProforma: (id, data) =>
     request(`/proformas/${id}/convert`, { method: 'POST', body: JSON.stringify(data) }),
   deleteProforma: (id) => request(`/proformas/${id}`, { method: 'DELETE' }),
+  uploadProformaPdf: async (id, blob, number) => {
+    const form = new FormData()
+    form.append('file', blob, `Proforma-${number || 'VEHIMAC'}.pdf`)
+    let res
+    try {
+      res = await fetch(`${API_URL}/api/proformas/${id}/pdf`, { method: 'POST', body: form })
+    } catch {
+      throw new ApiError('Sin conexión al servidor. Verificá que el backend esté corriendo.', 0)
+    }
+    const data = await res.json().catch(() => null)
+    if (!res.ok) {
+      const msg = data?.detail || `Error ${res.status}`
+      throw new ApiError(typeof msg === 'string' ? msg : JSON.stringify(msg), res.status)
+    }
+    return data
+  },
 
   getMechanics: (params = {}) => {
     const q = new URLSearchParams()

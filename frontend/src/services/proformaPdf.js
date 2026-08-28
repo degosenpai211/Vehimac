@@ -1,6 +1,6 @@
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
-import { openWhatsApp } from './api'
+import { api, openWhatsApp } from './api'
 
 async function makeProformaPdf(element) {
   if (!element) throw new Error('No hay documento para enviar')
@@ -20,29 +20,15 @@ async function makeProformaPdf(element) {
   return pdf
 }
 
-export async function shareProformaPdf(element, { number, phone, text } = {}) {
+export async function sendProformaPdfToClient(element, { id, number, phone, text } = {}) {
+  if (!phone) throw new Error('Ese cliente no tiene WhatsApp. Cargalo en su ficha.')
   const pdf = await makeProformaPdf(element)
   const blob = pdf.output('blob')
-  const file = new File([blob], `Proforma-${number || 'VEHIMAC'}.pdf`, { type: 'application/pdf' })
-  const message = text || `Proforma VEHIMAC Nº ${number || ''}`
-  const payload = {
-    title: `Proforma ${number || 'VEHIMAC'}`,
-    text: message,
-    files: [file],
+  const { url } = await api.uploadProformaPdf(id, blob, number)
+  if (!url) throw new Error('No se pudo armar el link del PDF')
+  const message = `${text || `Hola, te envío la proforma VEHIMAC Nº ${number || ''}.`}\n${url}`
+  if (!openWhatsApp(phone, message)) {
+    throw new Error('No se pudo abrir el WhatsApp de ese cliente')
   }
-  if (typeof navigator.share === 'function') {
-    try {
-      const canFiles = !navigator.canShare || navigator.canShare({ files: [file] })
-      if (canFiles) {
-        await navigator.share(payload)
-        return 'shared'
-      }
-    } catch (err) {
-      if (err?.name === 'AbortError') throw err
-    }
-  }
-  if (phone && openWhatsApp(phone, message)) {
-    return 'whatsapp'
-  }
-  throw new Error('Este celular no pudo abrir WhatsApp con el PDF. En iPhone usá Safari o la app del inicio.')
+  return 'whatsapp'
 }
