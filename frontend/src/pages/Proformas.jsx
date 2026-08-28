@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { flushSync } from 'react-dom'
 import { Plus, Pencil, Trash2, MessageCircle, X, ArrowRight, Eye } from 'lucide-react'
 import Modal from '../components/Modal'
 import ClientSearch from '../components/ClientSearch'
 import Loading from '../components/Loading'
 import EmptyState from '../components/EmptyState'
 import ProformaSheet, { formatBs, lineFigures, sheetTotals } from '../components/ProformaSheet'
+import ProformaPreview from '../components/ProformaPreview'
 import { useToast } from '../components/Toast'
-import { api, formatDate, formatPhone, whatsappUrl } from '../services/api'
+import { api, formatDate, whatsappUrl } from '../services/api'
 import { sendProformaPdfToClient } from '../services/proformaPdf'
 
 const emptyLine = () => ({
@@ -35,7 +35,6 @@ export default function Proformas() {
   const [lines, setLines] = useState([emptyLine()])
   const [saving, setSaving] = useState(false)
   const [preview, setPreview] = useState(null)
-  const [shareDoc, setShareDoc] = useState(null)
   const [pdfBusy, setPdfBusy] = useState(false)
   const [convertTarget, setConvertTarget] = useState(null)
   const [advanceAmount, setAdvanceAmount] = useState('')
@@ -164,24 +163,21 @@ export default function Proformas() {
     }
   }
 
-  const sendPdfToClient = async (p) => {
-    const phone = p.client?.whatsapp || p.client?.phone
+  const sendPdfToClient = async () => {
+    if (!preview) return
+    const phone = preview.client?.whatsapp || preview.client?.phone
     if (!whatsappUrl(phone)) {
       toast('Ese cliente no tiene WhatsApp. Cargalo en su ficha.', 'error')
       return
     }
     setPdfBusy(true)
     try {
-      const full = p.pieces?.length ? p : await api.getProforma(p.id)
-      flushSync(() => setShareDoc(full))
-      await new Promise((r) => requestAnimationFrame(r))
-      await new Promise((r) => setTimeout(r, 80))
-      const total = formatBs(full.total_amount)
+      const total = formatBs(preview.total_amount)
       await sendProformaPdfToClient(pdfRef.current, {
-        id: full.id,
-        number: full.number,
+        id: preview.id,
+        number: preview.number,
         phone,
-        text: `Hola, te envío la proforma VEHIMAC Nº ${full.number}. Total ${total} (sin IVA).`,
+        text: `Hola, te envío la proforma VEHIMAC Nº ${preview.number}. Total ${total} (sin IVA).`,
       })
     } catch (err) {
       if (err?.name === 'AbortError') return
@@ -195,7 +191,6 @@ export default function Proformas() {
     try {
       const full = await api.getProforma(p.id)
       setPreview(full)
-      setShareDoc(full)
     } catch (err) {
       toast(err.message, 'error')
     }
@@ -241,21 +236,19 @@ export default function Proformas() {
                   <tr key={p.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-bold text-brand-800">{p.number}</td>
                     <td className="px-4 py-3">
-                      <div className="font-medium">{p.client?.name || '—'}</div>
-                      {whatsappUrl(p.client?.whatsapp || p.client?.phone) ? (
-                        <button
-                          type="button"
-                          disabled={pdfBusy}
-                          title="Enviar PDF al WhatsApp de este cliente"
-                          onClick={() => sendPdfToClient(p)}
-                          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 px-2 py-1 rounded-full min-h-[32px]"
-                        >
-                          <MessageCircle size={12} />
-                          {formatPhone(p.client.whatsapp || p.client.phone)}
-                        </button>
-                      ) : p.client ? (
-                        <p className="text-[11px] text-slate-400 mt-0.5">Sin WhatsApp</p>
-                      ) : null}
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{p.client?.name || '—'}</span>
+                        {whatsappUrl(p.client?.whatsapp || p.client?.phone) && (
+                          <button
+                            type="button"
+                            title="Ver y enviar proforma"
+                            onClick={() => openPreview(p)}
+                            className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-green-50 text-green-700 hover:bg-green-100 shrink-0"
+                          >
+                            <MessageCircle size={15} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 font-semibold">{formatBs(p.total_amount)}</td>
                     <td className="px-4 py-3">
@@ -369,23 +362,21 @@ export default function Proformas() {
         </form>
       </Modal>
 
-      <Modal open={!!preview} onClose={() => { setPreview(null); setShareDoc(null) }} title={`Proforma Nº ${preview?.number || ''}`} size="xl">
-        <div className="flex justify-end mb-3">
-          <button type="button" className="btn min-h-[44px] bg-green-600 text-white hover:bg-green-700" disabled={pdfBusy} onClick={() => sendPdfToClient(preview)}>
-            <MessageCircle size={16} /> {pdfBusy ? 'Preparando PDF...' : 'Enviar al WhatsApp del cliente'}
+      <Modal open={!!preview} onClose={() => setPreview(null)} title={`Proforma Nº ${preview?.number || ''}`} size="sheet">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <p className="text-sm text-slate-600 truncate">{preview?.client?.name || 'Sin cliente'}</p>
+          <button type="button" className="btn min-h-[44px] bg-green-600 text-white hover:bg-green-700" disabled={pdfBusy || !whatsappUrl(preview?.client?.whatsapp || preview?.client?.phone)} onClick={sendPdfToClient}>
+            <MessageCircle size={16} /> {pdfBusy ? 'Preparando...' : 'Enviar por WhatsApp'}
           </button>
         </div>
-        <div className="overflow-auto bg-slate-200 p-2 rounded-lg max-h-[70vh]">
-          <div className="origin-top-left scale-[0.55] sm:scale-[0.72] lg:scale-[0.85]" style={{ width: '210mm' }}>
-            <ProformaSheet proforma={preview} />
-          </div>
+        <ProformaPreview proforma={preview} />
+        <div
+          aria-hidden
+          style={{ position: 'fixed', left: '-12000px', top: 0, width: '210mm', pointerEvents: 'none' }}
+        >
+          <ProformaSheet proforma={preview} sheetRef={pdfRef} />
         </div>
       </Modal>
-      {(shareDoc || preview) && (
-        <div style={{ position: 'fixed', left: 0, top: 0, zIndex: -1, pointerEvents: 'none' }}>
-          <ProformaSheet proforma={shareDoc || preview} sheetRef={pdfRef} />
-        </div>
-      )}
 
       <Modal open={!!convertTarget} onClose={() => setConvertTarget(null)} title={`Convertir Nº ${convertTarget?.number || ''} a OT`} size="sm">
         <form onSubmit={handleConvert} className="space-y-3">

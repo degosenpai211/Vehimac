@@ -3,7 +3,7 @@ import { X } from 'lucide-react'
 export default function Modal({ open, onClose, title, children, size = 'md' }) {
   if (!open) return null
 
-  const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
+  const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl', sheet: 'max-w-[860px]' }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
