@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../services/api'
 
-export default function MechanicSearch({ value, onChange, placeholder = 'Mecánico' }) {
+export default function MechanicSearch({ value, onChange, placeholder = 'Mecánico', role = 'mechanic' }) {
   const [query, setQuery] = useState(value || '')
   const [results, setResults] = useState([])
   const [open, setOpen] = useState(false)
@@ -20,13 +20,13 @@ export default function MechanicSearch({ value, onChange, placeholder = 'Mecáni
     }
     const t = setTimeout(() => {
       setLoading(true)
-      api.getMechanics({ search: q, prefix: true, active_only: true, limit: 10 })
+      api.getMechanics({ search: q, prefix: true, active_only: true, limit: 10, role })
         .then((res) => setResults(res || []))
         .catch(() => setResults([]))
         .finally(() => setLoading(false))
     }, 200)
     return () => clearTimeout(t)
-  }, [query])
+  }, [query, role])
 
   useEffect(() => {
     const handler = (e) => {

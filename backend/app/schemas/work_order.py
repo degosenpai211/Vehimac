@@ -22,6 +22,7 @@ class OrderItemCreate(BaseModel):
     description: str = Field(..., min_length=1)
     amount: Decimal = Field(default=Decimal("0"), ge=0)
     mechanic: str | None = None
+    designer: str | None = None
 
 
 class OrderItemResponse(OrderItemCreate):
@@ -85,6 +86,7 @@ class WorkOrderResponse(BaseModel):
     iva_amount: Decimal = Decimal("0")
     total_amount: Decimal = Decimal("0")
     mechanic: str | None = None
+    designer: str | None = None
     status: WorkOrderStatus
     entry_date: date
     estimated_delivery_date: date | None = None

@@ -18,6 +18,7 @@ const emptyPiece = () => ({
   description: '',
   amount: '',
   mechanic: '',
+  designer: '',
 })
 
 const PERIODS = [
@@ -137,12 +138,14 @@ export default function Ordenes() {
               description: p.description || '',
               amount: p.amount,
               mechanic: p.mechanic || '',
+              designer: p.designer || '',
             }))
           : [{
               part_name: full.part_description || '',
               description: full.work_description || '',
               amount: full.price_charged,
               mechanic: full.mechanic || '',
+              designer: full.designer || '',
             }]
       )
       setModalOpen(true)
@@ -189,6 +192,7 @@ export default function Ordenes() {
           description: p.description,
           amount: Number(p.amount) || 0,
           mechanic: p.mechanic || null,
+          designer: p.designer || null,
         })),
       }
       if (clientId && clientWhatsapp.trim()) {
@@ -356,7 +360,10 @@ export default function Ordenes() {
           )}
           {order.client && <p className="text-sm text-slate-600 mt-1 font-medium">{order.client.name}</p>}
           <div className="flex justify-between items-center py-2 mt-2 border-t border-slate-100 text-sm">
-            <span className="text-slate-500 text-xs">{order.mechanic || 'Sin asignar'}</span>
+            <span className="text-slate-500 text-xs">
+              {order.mechanic || 'Sin mecánico'}
+              {order.designer ? ` · ${order.designer}` : ''}
+            </span>
             <span className="font-bold">{formatCurrency(order.total_amount || order.price_charged)}</span>
           </div>
           <div className="flex flex-wrap gap-1 mb-1">
@@ -595,9 +602,10 @@ export default function Ordenes() {
                     <button type="button" onClick={() => removePiece(idx)} className="text-xs text-red-500">Quitar</button>
                   )}
                 </div>
-                <div className="grid sm:grid-cols-2 gap-2">
+                <div className="grid sm:grid-cols-3 gap-2">
                   <input className="input" placeholder="Pieza / parte" value={piece.part_name} onChange={(e) => updatePiece(idx, 'part_name', e.target.value)} />
-                  <MechanicSearch value={piece.mechanic} onChange={(val) => updatePiece(idx, 'mechanic', val)} />
+                  <MechanicSearch value={piece.mechanic} onChange={(val) => updatePiece(idx, 'mechanic', val)} placeholder="Mecánico" role="mechanic" />
+                  <MechanicSearch value={piece.designer} onChange={(val) => updatePiece(idx, 'designer', val)} placeholder="Diseñador" role="designer" />
                 </div>
                 <textarea className="input" required rows={2} placeholder="Descripción del trabajo *" value={piece.description} onChange={(e) => updatePiece(idx, 'description', e.target.value)} />
                 <input type="number" min="0" step="0.01" className="input" placeholder="Monto (Bs.)" value={piece.amount} onChange={(e) => updatePiece(idx, 'amount', e.target.value)} />

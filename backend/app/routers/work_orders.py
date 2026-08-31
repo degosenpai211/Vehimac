@@ -29,12 +29,14 @@ def _summary_from_pieces(pieces: list) -> dict:
             "work_description": first.get("description", "Orden"),
             "part_description": first.get("part_name"),
             "mechanic": first.get("mechanic"),
+            "designer": first.get("designer"),
             "price_charged": float(total),
         }
     return {
         "work_description": first.description,
         "part_description": first.part_name,
         "mechanic": first.mechanic,
+        "designer": first.designer,
         "price_charged": float(total),
     }
 
@@ -71,6 +73,7 @@ def _enrich_order(order: dict) -> dict:
     order.setdefault("qr_paid", False)
     order.setdefault("qr_paid_amount", 0)
     order.setdefault("photo_count", 0)
+    order.setdefault("designer", None)
     return order
 
 
@@ -145,7 +148,11 @@ def _insert_pieces(db, order_id: str, pieces: list[OrderItemCreate]) -> None:
         data = piece.model_dump(mode="json")
         data["work_order_id"] = order_id
         data["sort_order"] = i
-        db.table("order_items").insert(data).execute()
+        try:
+            db.table("order_items").insert(data).execute()
+        except Exception:
+            data.pop("designer", None)
+            db.table("order_items").insert(data).execute()
 
 
 def _full_order(db, order_id: str) -> dict:
@@ -289,6 +296,7 @@ def create_work_order(order: WorkOrderCreate):
         "work_description": summary["work_description"],
         "part_description": summary["part_description"],
         "mechanic": summary["mechanic"],
+        "designer": summary.get("designer"),
         "advance_amount": float(advance),
         "estimated_delivery_date": order.estimated_delivery_date.isoformat() if order.estimated_delivery_date else None,
         "status": "en_proceso",
@@ -296,6 +304,9 @@ def create_work_order(order: WorkOrderCreate):
     }
 
     result = db.table("work_orders").insert(data).execute()
+    if not result.data:
+        data.pop("designer", None)
+        result = db.table("work_orders").insert(data).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Error al crear orden")
 
