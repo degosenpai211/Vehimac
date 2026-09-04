@@ -149,6 +149,15 @@ export const api = {
   },
   createFinance: (data) => request('/finances', { method: 'POST', body: JSON.stringify(data) }),
   deleteFinance: (id) => request(`/finances/${id}`, { method: 'DELETE' }),
+  getSalaryBoard: () => request('/finances/salaries'),
+  paySalary: (data) => request('/finances/salaries/pay', { method: 'POST', body: JSON.stringify(data) }),
+  getProfitLoss: (params = {}) => {
+    const q = new URLSearchParams(params).toString()
+    return request(`/finances/pl${q ? `?${q}` : ''}`)
+  },
+  getFinanceSettings: () => request('/finances/settings'),
+  updateFinanceSettings: (data) => request('/finances/settings', { method: 'PATCH', body: JSON.stringify(data) }),
+  payRent: (which) => request(`/finances/rents/${which}`, { method: 'POST' }),
 }
 
 export function formatCurrency(amount) {

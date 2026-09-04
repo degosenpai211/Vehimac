@@ -50,6 +50,9 @@ def _attach_pieces(db, order: dict) -> dict:
         .execute()
     )
     order["pieces"] = items.data or []
+    for item in order["pieces"]:
+        if item.get("process") is None:
+            item["process"] = {}
     return order
 
 
@@ -148,11 +151,18 @@ def _insert_pieces(db, order_id: str, pieces: list[OrderItemCreate]) -> None:
         data = piece.model_dump(mode="json")
         data["work_order_id"] = order_id
         data["sort_order"] = i
+        if not data.get("process"):
+            data.pop("process", None)
         try:
             db.table("order_items").insert(data).execute()
         except Exception:
-            data.pop("designer", None)
-            db.table("order_items").insert(data).execute()
+            retry = dict(data)
+            retry.pop("process", None)
+            try:
+                db.table("order_items").insert(retry).execute()
+            except Exception:
+                retry.pop("designer", None)
+                db.table("order_items").insert(retry).execute()
 
 
 def _full_order(db, order_id: str) -> dict:

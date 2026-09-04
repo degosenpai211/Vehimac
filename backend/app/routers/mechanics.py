@@ -8,6 +8,15 @@ from app.schemas.mechanic import MechanicCreate, MechanicResponse, MechanicUpdat
 router = APIRouter(prefix="/mechanics", tags=["Mecánicos"])
 
 
+def _mechanic_row(row: dict) -> dict:
+    row.setdefault("role", "mechanic")
+    row.setdefault("salary_base", 0)
+    row.setdefault("salary_mode", "both")
+    row.setdefault("salary_period", "monthly")
+    row.setdefault("pay_day", 30)
+    return row
+
+
 @router.get("", response_model=list[MechanicResponse])
 def list_mechanics(
     search: str | None = Query(None),
@@ -38,11 +47,9 @@ def list_mechanics(
         rows = result.data or []
         if role == "designer":
             return []
-        return rows
+        return [_mechanic_row(r) for r in rows]
     rows = result.data or []
-    for row in rows:
-        row.setdefault("role", "mechanic")
-    return rows
+    return [_mechanic_row(r) for r in rows]
 
 
 @router.post("", response_model=MechanicResponse, status_code=201)
@@ -61,8 +68,7 @@ def create_mechanic(body: MechanicCreate):
     if not result.data:
         raise HTTPException(status_code=500, detail="Error al crear integrante")
     row = result.data[0]
-    row.setdefault("role", body.role)
-    return row
+    return _mechanic_row(row)
 
 
 @router.patch("/{mechanic_id}", response_model=MechanicResponse)
@@ -73,7 +79,16 @@ def update_mechanic(mechanic_id: UUID, body: MechanicUpdate):
         data["name"] = data["name"].strip()
     if not data:
         raise HTTPException(status_code=400, detail="Sin datos para actualizar")
-    result = db.table("mechanics").update(data).eq("id", str(mechanic_id)).execute()
+    try:
+        result = db.table("mechanics").update(data).eq("id", str(mechanic_id)).execute()
+    except Exception:
+        salary_keys = {"salary_base", "salary_mode", "salary_period", "pay_day"}
+        if salary_keys & set(data):
+            raise HTTPException(
+                status_code=400,
+                detail="Faltan columnas de salario. Ejecutá migration_v12.sql en Supabase.",
+            )
+        raise
     if not result.data:
         raise HTTPException(status_code=404, detail="Mecánico no encontrado")
-    return result.data[0]
+    return _mechanic_row(result.data[0])

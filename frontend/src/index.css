@@ -45,3 +45,20 @@
 [data-rbd-draggable-context-id] {
   overflow: visible !important;
 }
+
+@keyframes chart-bar-in {
+  from {
+    transform: scaleY(0.12);
+    opacity: 0.35;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.chart-bar {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: chart-bar-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}

@@ -1,24 +1,24 @@
 import { useEffect, useState } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
-import { Plus, Pencil, Trash2, Search, Copy, QrCode, MessageCircle, Camera, GripVertical } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, Copy, QrCode, MessageCircle, Camera, GripVertical, Check } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Modal from '../components/Modal'
 import ClientSearch from '../components/ClientSearch'
-import MechanicSearch from '../components/MechanicSearch'
 import PaymentQrModal from '../components/PaymentQrModal'
 import OrderDetailModal from '../components/OrderDetailModal'
 import RescheduleRow from '../components/RescheduleRow'
+import PieceProcessFields from '../components/PieceProcessFields'
 import Loading from '../components/Loading'
 import { useToast } from '../components/Toast'
 import { api, formatCurrency, formatDate, formatOT, computeBilling, whatsappUrl, openWhatsApp } from '../services/api'
 import { STATUS_COLUMNS } from '../utils/status'
+import { emptyProcess, normalizeProcess, serializeProcess, orderProcessDone } from '../utils/process'
 
 const emptyPiece = () => ({
   part_name: '',
   description: '',
   amount: '',
-  mechanic: '',
-  designer: '',
+  process: emptyProcess(),
 })
 
 const PERIODS = [
@@ -137,15 +137,13 @@ export default function Ordenes() {
               part_name: p.part_name || '',
               description: p.description || '',
               amount: p.amount,
-              mechanic: p.mechanic || '',
-              designer: p.designer || '',
+              process: normalizeProcess(p.process),
             }))
           : [{
               part_name: full.part_description || '',
               description: full.work_description || '',
               amount: full.price_charged,
-              mechanic: full.mechanic || '',
-              designer: full.designer || '',
+              process: emptyProcess(),
             }]
       )
       setModalOpen(true)
@@ -191,8 +189,9 @@ export default function Ordenes() {
           part_name: p.part_name || null,
           description: p.description,
           amount: Number(p.amount) || 0,
-          mechanic: p.mechanic || null,
-          designer: p.designer || null,
+          mechanic: null,
+          designer: null,
+          process: serializeProcess(p.process),
         })),
       }
       if (clientId && clientWhatsapp.trim()) {
@@ -305,6 +304,7 @@ export default function Ordenes() {
   const OrderCard = ({ order, index, colTheme }) => {
     const waPhone = order.client?.whatsapp || order.client?.phone
     const waText = `Hola, te escribo por la ${formatOT(order)}${order.work_description ? ` (${order.work_description})` : ''}.`
+    const processDone = orderProcessDone(order)
     return (
     <Draggable draggableId={order.id} index={index}>
       {(provided, snapshot) => (
@@ -326,7 +326,12 @@ export default function Ordenes() {
             </div>
             <div className="flex-1 min-w-0 p-3 pl-1">
           <div className="flex justify-between items-start gap-2 mb-1">
-            <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded">{formatOT(order)}</span>
+            <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded inline-flex items-center gap-1">
+              {formatOT(order)}
+              {processDone && (
+                <Check size={12} strokeWidth={3} className="text-brand-700" />
+              )}
+            </span>
             <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
               {whatsappUrl(waPhone) && (
                 <button
@@ -359,11 +364,7 @@ export default function Ordenes() {
             <p className="text-xs text-slate-500 mt-1">{order.pieces.length} piezas</p>
           )}
           {order.client && <p className="text-sm text-slate-600 mt-1 font-medium">{order.client.name}</p>}
-          <div className="flex justify-between items-center py-2 mt-2 border-t border-slate-100 text-sm">
-            <span className="text-slate-500 text-xs">
-              {order.mechanic || 'Sin mecánico'}
-              {order.designer ? ` · ${order.designer}` : ''}
-            </span>
+          <div className="flex justify-end items-center py-2 mt-2 border-t border-slate-100 text-sm">
             <span className="font-bold">{formatCurrency(order.total_amount || order.price_charged)}</span>
           </div>
           <div className="flex flex-wrap gap-1 mb-1">
@@ -583,7 +584,7 @@ export default function Ordenes() {
           )}
 
           <div>
-            <label className="label">Entrega estimada</label>
+            <label className="label">Fecha de entrega cliente</label>
             <input type="date" className="input" value={estimatedDelivery} onChange={(e) => setEstimatedDelivery(e.target.value)} />
           </div>
 
@@ -602,13 +603,15 @@ export default function Ordenes() {
                     <button type="button" onClick={() => removePiece(idx)} className="text-xs text-red-500">Quitar</button>
                   )}
                 </div>
-                <div className="grid sm:grid-cols-3 gap-2">
+                <div className="grid sm:grid-cols-2 gap-2">
                   <input className="input" placeholder="Pieza / parte" value={piece.part_name} onChange={(e) => updatePiece(idx, 'part_name', e.target.value)} />
-                  <MechanicSearch value={piece.mechanic} onChange={(val) => updatePiece(idx, 'mechanic', val)} placeholder="Mecánico" role="mechanic" />
-                  <MechanicSearch value={piece.designer} onChange={(val) => updatePiece(idx, 'designer', val)} placeholder="Diseñador" role="designer" />
+                  <input type="number" min="0" step="0.01" className="input" placeholder="Monto (Bs.)" value={piece.amount} onChange={(e) => updatePiece(idx, 'amount', e.target.value)} />
                 </div>
                 <textarea className="input" required rows={2} placeholder="Descripción del trabajo *" value={piece.description} onChange={(e) => updatePiece(idx, 'description', e.target.value)} />
-                <input type="number" min="0" step="0.01" className="input" placeholder="Monto (Bs.)" value={piece.amount} onChange={(e) => updatePiece(idx, 'amount', e.target.value)} />
+                <PieceProcessFields
+                  process={piece.process || emptyProcess()}
+                  onChange={(process) => updatePiece(idx, 'process', process)}
+                />
               </div>
             ))}
           </div>

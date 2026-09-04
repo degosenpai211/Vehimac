@@ -3,6 +3,7 @@ import { Camera, Trash2, MessageCircle } from 'lucide-react'
 import Modal from './Modal'
 import PhotoLightbox from './PhotoLightbox'
 import { useToast } from './Toast'
+import PieceProcessFields from './PieceProcessFields'
 import { api, formatCurrency, formatDate, formatOT, openWhatsApp, whatsappUrl } from '../services/api'
 
 export default function OrderDetailModal({ order, open, onClose, onCountChange }) {
@@ -94,7 +95,22 @@ export default function OrderDetailModal({ order, open, onClose, onCountChange }
             )}
             <p className="text-sm font-bold mt-1">{formatCurrency(order.total_amount || order.price_charged)}</p>
             <p className="text-xs text-slate-400 mt-1">Inicio: {formatDate(order.entry_date)}</p>
+            {order.estimated_delivery_date && (
+              <p className="text-xs text-slate-400">Entrega cliente: {formatDate(order.estimated_delivery_date)}</p>
+            )}
           </div>
+
+          {(order.pieces || []).map((piece, idx) => (
+            <div key={piece.id || idx} className="rounded-lg border border-slate-200 overflow-visible">
+              <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
+                <p className="text-xs font-semibold text-slate-500">Pieza {idx + 1}{piece.part_name ? ` · ${piece.part_name}` : ''}</p>
+                {piece.description && <p className="text-sm text-slate-700 mt-0.5">{piece.description}</p>}
+              </div>
+              <div className="p-1">
+                <PieceProcessFields process={piece.process} readOnly embedded />
+              </div>
+            </div>
+          ))}
 
           <div>
             <div className="flex items-center justify-between mb-2">

@@ -25,6 +25,100 @@ const STATUS_NOTE = {
   terminado: 'Para recoger',
 }
 
+const STATUS_CHART = [
+  { id: 'en_proceso', color: '#f59e0b' },
+  { id: 'terminado', color: '#2563eb' },
+  { id: 'entregado', color: '#059669' },
+]
+
+function polar(cx, cy, r, angle) {
+  return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)]
+}
+
+function arcPath(cx, cy, r, start, end) {
+  const [x1, y1] = polar(cx, cy, r, start)
+  const [x2, y2] = polar(cx, cy, r, end)
+  const large = end - start > Math.PI ? 1 : 0
+  return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`
+}
+
+function StatusBreakdown({ counts = {} }) {
+  const slices = STATUS_CHART.map((s) => ({
+    ...s,
+    label: ORDER_STATUS[s.id]?.label || s.id,
+    value: Number(counts[s.id]) || 0,
+  }))
+  const total = slices.reduce((s, x) => s + x.value, 0)
+  let angle = -Math.PI / 2
+  const rings = slices.map((s) => {
+    const frac = total ? s.value / total : 0
+    const start = angle
+    const sweep = frac * Math.PI * 2
+    angle += sweep
+    return { ...s, start, end: start + sweep, frac }
+  })
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h2 className="font-semibold">Órdenes por estado</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Distribución actual del taller</p>
+        </div>
+        <Link to="/ordenes" className="text-sm text-brand-600 hover:underline">Ver tablero →</Link>
+      </div>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="relative mx-auto sm:mx-0 shrink-0">
+          <svg viewBox="0 0 120 120" className="w-32 h-32">
+            <circle cx="60" cy="60" r="38" fill="none" stroke="#e2e8f0" strokeWidth="14" />
+            {total > 0 && rings.map((s) => {
+              if (!s.value) return null
+              if (s.frac >= 0.999) {
+                return <circle key={s.id} cx="60" cy="60" r="38" fill="none" stroke={s.color} strokeWidth="14" />
+              }
+              const gap = s.frac > 0.04 ? 0.05 : 0
+              return (
+                <path
+                  key={s.id}
+                  d={arcPath(60, 60, 38, s.start + gap / 2, s.end - gap / 2)}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth="14"
+                  strokeLinecap="round"
+                />
+              )
+            })}
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <p className="text-xl font-bold text-slate-800 leading-none">{total}</p>
+            <p className="text-[10px] uppercase tracking-wide text-slate-400 mt-1">Total</p>
+          </div>
+        </div>
+        <div className="flex-1 grid grid-cols-1 gap-2 min-w-0">
+          {slices.map((s) => {
+            const pct = total ? Math.round((s.value / total) * 100) : 0
+            return (
+              <div key={s.id} className="flex items-center gap-3">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between gap-2 text-sm">
+                    <span className="text-slate-600 truncate">{s.label}</span>
+                    <span className="font-semibold tabular-nums text-slate-800">{s.value}</span>
+                  </div>
+                  <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: s.color }} />
+                  </div>
+                </div>
+                <span className="text-[11px] text-slate-400 tabular-nums w-8 text-right">{pct}%</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AlarmGroup({ title, items, tone }) {
   if (!items?.length) return null
   const box = {
@@ -201,25 +295,16 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <FinanceChart trends={trends} />
+      <FinanceChart
+        trends={trends}
+        title="Ingresos y egresos"
+        subtitle="Hoy, esta semana y este mes. Tocá una barra para ver el detalle."
+      />
 
       <AgendaList title="Pasado mañana" items={stats.delivery_agenda?.due_day_after} tone="blue" period="day_after" />
       <AgendaList title="Próxima semana" items={stats.delivery_agenda?.due_next_week} tone="slate" period="next_week" />
 
-      <div className="card p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Órdenes por estado</h2>
-          <Link to="/ordenes" className="text-sm text-brand-600 hover:underline">Ver tablero →</Link>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          {Object.entries(stats.orders_by_status).map(([status, count]) => (
-            <div key={status} className={`rounded-lg border p-3 text-center ${ORDER_STATUS[status]?.color || ''}`}>
-              <p className="text-2xl font-bold">{count}</p>
-              <p className="text-xs mt-1">{ORDER_STATUS[status]?.label || status}</p>
-            </div>
-          ))}
-        </div>
-      </div>
+      <StatusBreakdown counts={stats.orders_by_status} />
 
       {stats.stale_stored_pieces?.length > 0 && (
         <div className="card p-4 border-amber-200 bg-amber-50">

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../services/api'
 
-export default function MechanicSearch({ value, onChange, placeholder = 'Mecánico', role = 'mechanic' }) {
+export default function MechanicSearch({ value, onChange, placeholder = 'Mecánico', role }) {
   const [query, setQuery] = useState(value || '')
   const [results, setResults] = useState([])
   const [open, setOpen] = useState(false)
@@ -13,20 +13,20 @@ export default function MechanicSearch({ value, onChange, placeholder = 'Mecáni
   }, [value])
 
   useEffect(() => {
+    if (!open) return
     const q = query.trim()
-    if (!q) {
-      setResults([])
-      return
-    }
     const t = setTimeout(() => {
       setLoading(true)
-      api.getMechanics({ search: q, prefix: true, active_only: true, limit: 10, role })
+      const params = { active_only: true, limit: q ? 10 : 30, prefix: true }
+      if (q) params.search = q
+      if (role) params.role = role
+      api.getMechanics(params)
         .then((res) => setResults(res || []))
         .catch(() => setResults([]))
         .finally(() => setLoading(false))
-    }, 200)
+    }, q ? 200 : 0)
     return () => clearTimeout(t)
-  }, [query, role])
+  }, [query, role, open])
 
   useEffect(() => {
     const handler = (e) => {
@@ -50,11 +50,11 @@ export default function MechanicSearch({ value, onChange, placeholder = 'Mecáni
         }}
         onFocus={() => setOpen(true)}
       />
-      {open && query.trim() && (
-        <ul className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+      {open && (
+        <ul className="absolute z-30 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
           {loading && <li className="p-2 text-xs text-slate-400">Buscando...</li>}
           {!loading && results.length === 0 && (
-            <li className="p-2 text-xs text-slate-400">Sin coincidencias — se guarda el texto</li>
+            <li className="p-2 text-xs text-slate-400">{query.trim() ? 'Sin coincidencias — se guarda el texto' : 'Equipo activo'}</li>
           )}
           {results.map((m) => (
             <li key={m.id}>
@@ -62,12 +62,20 @@ export default function MechanicSearch({ value, onChange, placeholder = 'Mecáni
                 type="button"
                 className="w-full text-left px-3 py-2 hover:bg-brand-50 text-sm"
                 onClick={() => {
-                  setQuery(m.name)
-                  onChange(m.name)
+                  const label = !role && m.role
+                    ? `${m.name} — ${m.role === 'designer' ? 'Diseñador' : 'Mecánico'}`
+                    : m.name
+                  setQuery(label)
+                  onChange(label)
                   setOpen(false)
                 }}
               >
                 {m.name}
+                {!role && m.role && (
+                  <span className="ml-2 text-[10px] uppercase text-slate-400">
+                    {m.role === 'designer' ? 'Diseñador' : 'Mecánico'}
+                  </span>
+                )}
               </button>
             </li>
           ))}

@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class WorkOrderStatus(str, Enum):
@@ -23,6 +23,14 @@ class OrderItemCreate(BaseModel):
     amount: Decimal = Field(default=Decimal("0"), ge=0)
     mechanic: str | None = None
     designer: str | None = None
+    process: dict | None = None
+
+    @field_validator("process")
+    @classmethod
+    def clip_process_observation(cls, value):
+        if isinstance(value, dict) and value.get("observation"):
+            return {**value, "observation": str(value["observation"])[:80]}
+        return value
 
 
 class OrderItemResponse(OrderItemCreate):

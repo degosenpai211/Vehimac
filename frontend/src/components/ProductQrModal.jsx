@@ -23,15 +23,15 @@ export default function ProductQrModal({ open, onClose, onPaid }) {
   const handleConfirm = async () => {
     const paid = Number(String(amount).replace(',', '.'))
     if (!paid || paid <= 0) {
-      setError('Ingresá el monto que depositó')
+      setError('Ingresá el monto de la compra')
       return
     }
     setSaving(true)
     setError('')
     try {
       await api.createFinance({
-        type: 'ingreso',
-        description: `Venta ${PLASTIC27_QR.product} (${PLASTIC27_QR.name})`,
+        type: 'gasto',
+        description: `Compra ${PLASTIC27_QR.product} (filamento)`,
         amount: paid,
         category: 'Plastic 27',
       })
@@ -48,16 +48,16 @@ export default function ProductQrModal({ open, onClose, onPaid }) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
       <div className="relative bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full max-w-md p-5 max-h-[92vh] overflow-y-auto">
-        <h2 className="text-lg font-semibold mb-1">QR Plastic 27</h2>
-        <p className="text-sm text-slate-500 mb-4">{PLASTIC27_QR.name} · venta de producto</p>
+        <h2 className="text-lg font-semibold mb-1">Compra Plastic 27</h2>
+        <p className="text-sm text-slate-500 mb-4">{PLASTIC27_QR.name} · costo directo / filamentos</p>
         <div className="flex justify-center bg-white rounded-xl p-2 border border-slate-200">
           <img src={PLASTIC27_QR.src} alt="BNB Plastic 27" className="w-full max-h-[58vh] object-contain" />
         </div>
         <p className="text-center mt-4 text-sm text-slate-600">
-          El cliente escanea. Cuando veas el depósito, confirmá el monto.
+          Registrá el monto de la compra de Plastic 27 (filamento). Entra como egreso en el estado de resultados.
         </p>
         <div className="mt-3">
-          <label className="label">Monto depositado (Bs.)</label>
+          <label className="label">Monto pagado (Bs.)</label>
           <input
             className="input font-semibold text-right"
             inputMode="decimal"
@@ -69,7 +69,7 @@ export default function ProductQrModal({ open, onClose, onPaid }) {
         <div className="flex gap-2 mt-4">
           <button type="button" onClick={handleClose} className="btn-secondary flex-1">Cerrar</button>
           <button type="button" onClick={handleConfirm} disabled={saving} className="btn-primary flex-1">
-            {saving ? 'Guardando...' : 'Ya pagó'}
+            {saving ? 'Guardando...' : 'Registrar compra'}
           </button>
         </div>
       </div>

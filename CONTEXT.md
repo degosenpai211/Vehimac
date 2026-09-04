@@ -1,6 +1,6 @@
 # Vehimac ERP — Contexto técnico
 
-Documento de continuidad. **Última actualización: 2026-08-26 (agenda de entregas + reprogramar + avisos + iPhone).**  
+Documento de continuidad. **Última actualización: 2026-09-04** (proceso por pieza, salarios, estado de resultados).  
 En un chat nuevo: pegá o adjuntá este archivo y pedí “seguí desde CONTEXT.md”.
 
 ---
@@ -11,8 +11,8 @@ Repo: `https://github.com/degosenpai211/Vehimac.git`
 
 | Rama | Qué hay | En GitHub |
 |------|---------|-----------|
-| `master` | Features de producto. **Producción**. HEAD `2fb8eda` (fotos OT + Storage temporal). | Sí, sync |
-| `migracion-vps` | Quedó en `ea98738` (un commit atrás). **No hay código de VPS**; no mezclar Path A aquí. | Sí |
+| `master` | Features de producto. **Producción**. Proceso por pieza, salarios y EE.RR. | Sí |
+| `migracion-vps` | **No hay código de VPS**; no mezclar Path A aquí. | Sí |
 
 No mezclar infra VPS con features. Path A (Postgres nativo, Nginx, PM2, Hostinger) **no está implementado**. `config.py` / `database.py` siguen con `SUPABASE_URL` + `SUPABASE_KEY` + `supabase-py`.
 
@@ -30,8 +30,8 @@ Sin auth: cualquiera con la URL opera. Auth queda para **después del VPS**.
 | Capa | Tech | Host |
 |------|------|------|
 | Frontend | React 18 + Vite 6 + Tailwind 3 + PWA | Vercel (`frontend/`) |
-| Backend | FastAPI + `supabase-py` (PostgREST, no ORM) | Railway `https://vehimac-production.up.railway.app` |
-| DB | Postgres | Supabase `https://uxirhklgpukrcvtnpcij.supabase.co` — **solo Postgres**, no Auth/Storage/RLS de usuarios |
+| Backend | FastAPI + `supabase-py` (PostgREST, no ORM) | Railway `https://vehimac-production-9609.up.railway.app` |
+| DB | Postgres | Supabase — **solo Postgres**, no Auth/Storage/RLS de usuarios |
 
 Env:
 
@@ -40,108 +40,96 @@ Env:
 
 Deploy breaking: **SQL Supabase → Railway → Vercel**.
 
-**Plan futuro (no código):** un VPS Hostinger KVM2, Postgres nativo, FastAPI + PM2, frontend estático + Nginx, SSL. Corte: dump final Supabase → restore VPS → DNS. Dejar SaaS pausado 1–2 semanas. Backend **sigue FastAPI** (no Node).
+**Plan futuro (no código):** un VPS Hostinger KVM2, Postgres nativo, FastAPI + PM2, frontend estático + Nginx, SSL.
 
 ---
 
-## Features en `master` (post `ea98738`)
+## Features vigentes
 
-### Ya usables en UI (hace falta SQL v4–v5)
+### Órdenes
 
-- **Adelanto tipeable** (sugerencia 50% con botón). Campo de texto, no `type=number` con max.
-- **IVA 13% se SUMA** (no incluido). Neto 90 → IVA 11,70 → total 101,70. Por **OT completa**, se elige **al crear**. Finanzas usan el **total**. Columnas: `billing_type`, `iva_amount`, `total_amount`. `price_charged` = neto.
-- **Kanban:** chips Hoy / Esta semana / Atrasadas / Todas (igual que antes). **Más** chips de entrega: Entregar hoy / Mañana / Pasado / Próx. semana (fecha de entrega exacta, sin entregadas). En la card: **Reprogramar** +1…+5 días o +1 semana; pregunta si avisar por WhatsApp.
-- **Inicio:** listas Se entregan hoy / mañana / pasado / próxima semana (en proceso y terminado = recoger). El recuadro rojo de vencidas en proceso se mantiene. Botón **Activar avisos** (Notification API, una vez al día). En iPhone hay que **Agregar a pantalla de inicio**; sin eso Safari casi no notifica.
-- **iPhone 11–13:** misma UI que Android. `viewport-fit=cover`, safe-area, `100dvh`, inputs 16px (sin zoom), botones ≥44px. No hay app aparte.
-- **WhatsApp en la card de OT** (no en el QR de clientes). El número vive en `clients.whatsapp`. En el form de OT, al elegir cliente, se puede cargar/editar WhatsApp y se **guarda en el cliente**. Link `wa.me` con helper `whatsappUrl` (+591).
-- **Equipo** (`/equipo`): tabla `mechanics`, agregar/desactivar (no borrar). En cada **pieza** de la OT, autocompletado (`fr` → Franz) y texto libre.
-- **QR de cobro OT (servicios/trabajos):** ícono QR en la card. Solo **Mercantil Santa Cruz** y **Banco Ganadero**, uno a la vez. Al cerrar, el siguiente open usa el otro (`localStorage` `vehimac_qr_next`). **No** rota cada 4 s. **BNB no entra acá.** Botón **Ya pagó** registra ingreso categoría `QR`. JPGs: `frontend/public/qr/mercantil.jpg`, `ganadero.jpg`.
-- **QR Plastic 27:** botón en **Finanzas**. Muestra el QR de **BNB** (`bnb-plastic27.jpg`). **Ya pagó** crea un ingreso categoría `Plastic 27`, sin OT.
-- **Fotos de OT (temporal, Supabase Storage):** bucket `ot-photos`, tabla `order_photos`. Kanban solo muestra ícono cámara + contador (sin descargar imágenes). Al abrir **detalle** se piden URLs firmadas (lazy). Hasta 3 fotos, ~5 MB, jpg/png/webp, cámara del celular. Miniaturas 80×80; tap abre lightbox (flechas, swipe, X / tap afuera). Código en `backend/app/services/photos.py` con comentarios **VPS** (`/var/www/vehimac/uploads/` + Nginx). Hace falta ejecutar `migration_v7.sql`.
-- **Proformas:** menú `/proformas` + botón “Crear proforma” en Órdenes. El PDF clona la plantilla Excel (teal `#008B9B`, filas intercaladas, nota, firma Marcelo Calvimontes, GRACIAS!!!). Número de pedido = entero (`195`, no `PRO-004`). Líneas: descripción, cantidad, precio unitario, % desc. **Sin IVA en el papel.** Al convertir a OT se copia el neto de cada línea y solo se pide adelanto. Router montado en `main.py`. SQL: `migration_v6.sql` + `migration_v8.sql` (columnas quantity/unit_price/discount_percent). Logo actual es un SVG de aproximación (`VehimacLogo.jsx`); reemplazar por el PNG real cuando lo tengan.
+- Kanban `en_proceso` → `terminado` → `entregado`. IVA 13% se **suma**. Adelanto tipeable.
+- WhatsApp: ícono 44px en card OT. iOS/PWA usa `whatsapp://`.
+- **Proceso por pieza** (Excel de OT): 5 pasos fijos — Diseño, Soldadura, Afinado, Pintura, Instalación. Acordeón por pieza. Estado **a mano** (Pendiente / En proceso / Completado) tocando círculo o badge. Check al lado para **confirmar proceso listo** cuando los 5 están Completado. Técnico de Equipo (activos). Fecha/hora por paso. Observación por pieza (máx. 80, sin mostrar el contador). Entrega OT + observación van **al pie**, no como 6.º paso. SQL `migration_v11.sql` (`order_items.process` JSONB).
+- En el form de pieza **no** hay mecánico/diseñador sueltos (van en cada paso). La descripción del trabajo **sí** se mantiene.
+- FECHA ENTREGA CLIENTE = `estimated_delivery_date` de la OT.
+
+### Equipo
+
+- Dos listas: mecánicos y diseñadores (`mechanics.role`). SQL `migration_v10.sql`.
+- El sueldo **no** se edita en Equipo; se carga en Finanzas → Salarios.
+
+### Salarios (Finanzas)
+
+- Tres modos: fijo, por trabajos, o ambos. Períodos: semanal, quincenal (15 y fin de mes), mensual.
+- Mensual: desde el día de pago, **5 días hábiles** de plazo (lun–vie).
+- **Pagar** crea un **egreso** categoría `Sueldos y salarios`. SQL `migration_v12.sql` (sueldo en `mechanics` + `finances.mechanic_id`).
+
+### Finanzas (estado de resultados tipo Excel EE.RR.)
+
+Tres pestañas: **Resultados** | **Movimientos** | **Salarios**.
+
+**Resultados:** primero **semana**, después **mes** (flechas para cambiar período). Filas fijas del Excel; celdas vacías son normales.
+
+| Grupo | Filas | Origen |
+|-------|--------|--------|
+| Ingresos | Ingresos por servicios | Auto: adelantos OT + cobro al entregar + QR de OT |
+| Ingresos | Otros ingresos | Manual |
+| Costos directos | Filamentos | Manual |
+| Costos directos | Plastic 27 | **Compra** (egreso). El botón QR Plastic 27 registra el gasto de filamento, no una venta. |
+| Costos indirectos | Insumos, sueldos, alquiler 1 y 2, servicios básicos, oficina, marketing, comisiones, mantenimiento, herramientas, otros varios, otros egresos, previsiones, intereses, fiscales, tributarios | Sueldos auto. Alquileres: monto **fijo** que define el usuario (Ajustes) y se **Carga** cuando se paga. El resto manual. |
+
+- **Nuevo registro:** hay que elegir **una de esas filas**. Palabra en UI: **egreso** (en DB el tipo sigue `gasto`).
+- **IVA facturado:** informativo (OT con factura en el período). El pago a impuestos es la fila Tributarios/Fiscales, a mano.
+- **Efectivo:** saldo = efectivo inicial (ajuste) + todos los ingresos − todos los egresos.
+- SQL `migration_v13.sql` (`finance_settings`: `cash_opening`, `rent_1`, `rent_2`).
+
+### Proformas, fotos, PWA, QR OT
+
+- Proformas: sin Aprobar. PDF teal + WhatsApp al cliente (bucket `proforma-pdfs`). SQL v6, v8, v9.
+- Fotos OT: bucket `ot-photos`, máx. 3. SQL v7.
+- QR cobro OT: Mercantil ↔ Ganadero. BNB solo en Finanzas (ahora como compra Plastic 27).
+- PWA iPhone: PNG apple-touch, nav inferior, agregar desde Safari.
 
 ### No implementado (acordado)
 
 - Auth en el VPS
-- Ruta pública `/orden/:id/pago` para WhatsApp (opción B)
+- Ruta pública `/orden/:id/pago`
 - Driver Postgres nativo / Nginx / PM2
 - Cron auto-borrado fotos 90 días
-- Mover fotos de Storage al filesystem del VPS (mismo `order_photos.path`)
-- Logo PNG real de VEHIMAC en la proforma (hoy es SVG aproximado)
+- Logo PNG real de VEHIMAC en la proforma (hoy SVG)
 
 ---
 
-## SQL a ejecutar en Supabase (contenido del archivo, no la ruta)
+## SQL a ejecutar en Supabase
 
-Producción **ya tiene** v2 y v3.
+Producción **ya tiene** v2 y v3. Ir en orden lo que falte:
 
 | Archivo | Para |
 |---------|------|
 | `migration_v4.sql` | IVA + tabla `mechanics` |
-| `migration_v5.sql` | Pago QR (`qr_paid`, `qr_bank`, `qr_paid_amount`, `qr_paid_at`) |
+| `migration_v5.sql` | Pago QR OT |
 | `migration_v6.sql` | `proformas` + `proforma_items` |
-| `migration_v7.sql` | `order_photos` + bucket Storage `ot-photos` (crear en SQL Editor) |
-| `migration_v8.sql` | `proforma_items`: `quantity`, `unit_price`, `discount_percent` |
-
-Sin v4/v5, Equipo / IVA / “Ya pagó” fallan.
-
-Tablas: `clients`, `vehicles`, `work_orders`, `order_items`, `finances`, `mechanics`, `proformas`, `proforma_items`, `order_photos`.
-
-Nombres en inglés (`work_orders`, no `ordenes`).
-
----
-
-## QR de cobro (archivos estáticos)
-
-Vite sirve `frontend/public/` en la raíz. No hay upload: son fotos de los QR del banco.
-
-| Archivo | Banco | Uso |
-|---------|-------|-----|
-| `frontend/public/qr/mercantil.jpg` | Mercantil Santa Cruz | OT / servicios / trabajos |
-| `frontend/public/qr/ganadero.jpg` | Banco Ganadero | OT / servicios / trabajos |
-| `frontend/public/qr/bnb-plastic27.jpg` | BNB | Solo venta **Plastic 27** (Finanzas) |
-
-Órdenes rotan Mercantil ↔ Ganadero. Finanzas → **QR Plastic 27** abre el BNB.
-
-**Fotos del auto/piezas por OT:** modal de detalle + Storage `ot-photos`. Kanban solo muestra contador.
+| `migration_v7.sql` | `order_photos` + bucket `ot-photos` |
+| `migration_v8.sql` | columnas de líneas de proforma |
+| `migration_v9.sql` | PDF proforma / bucket `proforma-pdfs` |
+| `migration_v10.sql` | `mechanics.role` + diseñador en OT/piezas |
+| `migration_v11.sql` | `order_items.process` JSONB |
+| `migration_v12.sql` | salarios en `mechanics` + `finances.mechanic_id` |
+| `migration_v13.sql` | `finance_settings` (efectivo + alquileres fijos) |
 
 ---
 
 ## Arquitectura (decisiones vigentes)
 
-- BFF FastAPI delgado; queries estilo `.table().select()`. Migrar a SQL crudo es el grueso del Path A.
-- JSX, no TS (`jsconfig.json`).
-- Kanban 3 columnas; `finalizado` se mapea a `entregado`.
+- JSX, no TS. Kanban 3 columnas.
 - Piezas de OT ≠ inventario. Piezas guardadas = OT `terminado`.
-- Autos en `vehicles` (marca/modelo/año). Sin fiado (`balance` ≤ 0).
-- Adelanto tipeable; cobro al entregar = total − adelanto − QR.
-- OT: `MAX(ot_number)+1`, no usa `ot_number_seq`.
-- Cliente: búsqueda por prefijo.
+- Finanzas: tipo interno `ingreso` \| `gasto`; en pantalla se dice egreso.
+- Categorías del EE.RR. viven en `backend/app/services/pl.py` y `frontend/src/utils/financeCatalog.js`.
 
-API `/api`: `clients`, `mechanics`, `work-orders` (+ `/kanban`, `/advance`, `/qr-payment`, `/{id}/photos`), `proformas` (+ `/convert`), `stored-pieces`, `finances`, `dashboard`.
+API `/api`: `clients`, `mechanics`, `work-orders`, `proformas`, `stored-pieces`, `finances` (`/pl`, `/settings`, `/salaries`, `/rents/{1|2}`), `dashboard`.
 
 Front: `/`, `/piezas-guardadas`, `/clientes`, `/equipo`, `/ordenes`, `/proformas`, `/finanzas`.
-
----
-
-## Comercial (Bolivia)
-
-Fase 1 ~1.700 Bs. Mantenimiento 450 o 600 Bs/mes. VPS + auth + PDF se cotizan aparte.
-
----
-
-## Pendiente (prioridad)
-
-1. Correr SQL v4, v5, v6, **v7** (fotos), **v8** (columnas de proforma)
-2. Crear bucket: el `INSERT` de `migration_v7.sql` lo hace; si falla, en Supabase → Storage → New bucket `ot-photos` (privado, 5 MB)
-3. Reemplazar logo SVG de la proforma por el PNG oficial
-4. Path A VPS en rama propia, sin mezclar con features
-5. Cron auto-borrado de fotos a 90 días
-6. Link público de pago QR
-7. README (`VITE_API_URL` sin `/api`)
-8. Auth, OT1670, proveedores
-
-Deuda: editar cliente borra/recrea autos; OT viejas pueden tener `ot_number` NULL; `product.py` leftover.
 
 ---
 
@@ -154,5 +142,3 @@ uvicorn app.main:app --reload --port 8000
 cd frontend  # .env: VITE_API_URL=http://localhost:8000
 npm run dev
 ```
-
-Prueba: cliente + WhatsApp → OT con factura → Equipo/mecánico → QR “Ya pagó” → Finanzas categoría QR → Entregar cobra el resto.

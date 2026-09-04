@@ -99,7 +99,7 @@ export default function Equipo() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold">Equipo</h1>
-        <p className="text-sm text-slate-500">Mecánicos y diseñadores. No se borran: se desactivan para conservar el historial.</p>
+        <p className="text-sm text-slate-500">Mecánicos y diseñadores. No se borran: se desactivan para conservar el historial. El sueldo se carga en Finanzas → Salarios.</p>
       </div>
       <div className="grid lg:grid-cols-2 gap-8">
         <StaffList
