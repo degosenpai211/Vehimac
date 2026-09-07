@@ -202,15 +202,20 @@ def convert_proforma(proforma_id: UUID, body: ProformaConvert):
     pieces_raw = proforma.get("pieces") or []
     if not pieces_raw:
         raise HTTPException(status_code=400, detail="La proforma no tiene líneas")
-    pieces = [
-        OrderItemCreate(
-            part_name=p.get("part_name"),
-            description=p.get("description") or "Trabajo",
-            amount=Decimal(str(p.get("amount") or 0)),
-            mechanic=p.get("mechanic"),
+    pieces = []
+    for p in pieces_raw:
+        name = (p.get("part_name") or p.get("description") or "").strip() or "Pieza"
+        work = (p.get("description") or "").strip()
+        if not p.get("part_name"):
+            work = name
+        pieces.append(
+            OrderItemCreate(
+                part_name=name,
+                description=work or name,
+                amount=Decimal(str(p.get("amount") or 0)),
+                mechanic=p.get("mechanic"),
+            )
         )
-        for p in pieces_raw
-    ]
     summary = _summary_from_pieces(pieces)
     billing = _billing_fields(Decimal(str(summary["price_charged"])), "sin_factura")
     payable = Decimal(str(billing["total_amount"]))

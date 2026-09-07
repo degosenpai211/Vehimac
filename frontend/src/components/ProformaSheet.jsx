@@ -92,18 +92,32 @@ export default function ProformaSheet({ proforma, sheetRef }) {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 800, textDecoration: 'underline', lineHeight: 1.1 }}>VEHIMAC</div>
-          <div style={{ fontSize: 12, marginTop: 6 }}>NIT: 5867649016</div>
-          <div style={{ fontSize: 12, marginTop: 2 }}>Dirección: B. Hilandería / C. 23 de Julio Nro 221</div>
+          <div style={{ fontSize: 20, fontWeight: 800, textDecoration: 'underline', lineHeight: 1.1, letterSpacing: 0.5 }}>
+            VEHIMAC
+          </div>
+          <div
+            style={{
+              marginTop: 5,
+              fontSize: 11,
+              fontWeight: 600,
+              color: PROFORMA_TEAL_DARK,
+              letterSpacing: 0.3,
+              lineHeight: 1.35,
+            }}
+          >
+            Soluciones con impresiones 3D — Plastic 27
+          </div>
+          <div style={{ fontSize: 12, marginTop: 8, color: '#334155' }}>Teléfonos: 71015081 / 60830350</div>
+          <div style={{ fontSize: 12, marginTop: 2, color: '#334155' }}>Dirección: B. Hilandería / C. 23 de Julio Nro 221</div>
         </div>
-        <VehimacLogo size={96} />
+        <VehimacLogo size={118} />
       </div>
 
       <div style={{ height: 6, background: PROFORMA_TEAL, margin: '12px 0 10px' }} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.9fr', gap: 8, fontSize: 12, marginBottom: 4 }}>
         <div>
-          <span style={{ fontWeight: 700, color: '#4b5563' }}>Trabajo para</span>
+          <span style={{ fontWeight: 700, color: '#4b5563' }}>Cliente : </span>
           <span style={{ marginLeft: 8, borderBottom: '1px solid #cbd5e1', display: 'inline-block', minWidth: 180 }}>
             {client?.name || ''}
           </span>
@@ -169,10 +183,8 @@ export default function ProformaSheet({ proforma, sheetRef }) {
           <div style={{ border: '1px solid #111', minHeight: 58, padding: '6px 8px', fontSize: 12 }}>
             <span style={{ fontWeight: 700 }}>Nota:</span> {proforma?.notes || ''}
           </div>
-          <div style={{ marginTop: 18, color: '#1e4d8c', fontFamily: 'Georgia, "Times New Roman", serif', lineHeight: 1.25 }}>
-            <div style={{ fontSize: 16, fontStyle: 'italic', fontWeight: 700 }}>Marcelo Calvimontes C.</div>
-            <div style={{ fontSize: 11, letterSpacing: 1, fontWeight: 700 }}>GERENTE GENERAL</div>
-            <div style={{ fontSize: 12, fontWeight: 800, marginTop: 2 }}>=VEHIMAC=</div>
+          <div style={{ marginTop: 16, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+            Atentos a su confirmación
           </div>
         </div>
         <div style={{ width: 210, fontSize: 11, fontWeight: 700 }}>

@@ -86,7 +86,7 @@ Tres pestañas: **Resultados** | **Movimientos** | **Salarios**.
 
 ### Proformas, fotos, PWA, QR OT
 
-- Proformas: sin Aprobar. PDF teal + WhatsApp al cliente (bucket `proforma-pdfs`). SQL v6, v8, v9.
+- Proformas: sin Aprobar. PDF teal + WhatsApp al cliente (bucket `proforma-pdfs`). SQL v6, v8, v9. Logo oficial `frontend/public/vehimac-logo.jpg`. Cierre: «Atentos a su confirmación». Cabecera: teléfonos 71015081 / 60830350 (sin NIT).
 - Fotos OT: bucket `ot-photos`, máx. 3. SQL v7.
 - QR cobro OT: Mercantil ↔ Ganadero. BNB solo en Finanzas (ahora como compra Plastic 27).
 - PWA iPhone: PNG apple-touch, nav inferior, agregar desde Safari.
@@ -97,7 +97,6 @@ Tres pestañas: **Resultados** | **Movimientos** | **Salarios**.
 - Ruta pública `/orden/:id/pago`
 - Driver Postgres nativo / Nginx / PM2
 - Cron auto-borrado fotos 90 días
-- Logo PNG real de VEHIMAC en la proforma (hoy SVG)
 
 ---
 
