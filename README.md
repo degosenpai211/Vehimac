@@ -18,14 +18,16 @@ Cada pieza tiene un **proceso** de 5 pasos (Diseño → Instalación): técnico,
 - **Piezas guardadas** — órdenes en Terminado
 - **Clientes** — WhatsApp, filtros, piezas sin recoger
 - **Equipo** — mecánicos y diseñadores (activos). El sueldo se carga en Finanzas
-- **Órdenes** — Kanban, proceso por pieza, QR de cobro, WhatsApp
-- **Proformas** — PDF VEHIMAC y envío por WhatsApp
+- **Órdenes** — Kanban, proceso por pieza, QR de cobro, WhatsApp. Fotos (máx. 3) al **crear o editar** la OT; se comprimen en el celular. El ícono de cámara en la card del Kanban está **oculto** (el código queda por si se vuelve a mostrar).
+- **Proformas** — PDF con logo oficial VEHIMAC, eslogan *Soluciones con impresiones 3D — Plastic 27*, teléfonos 71015081 / 60830350 (sin NIT). Cierre: «Atentos a su confirmación». Envío por WhatsApp. Al **convertir a OT**, el texto de la cotización va a **Pieza**, no a descripción del trabajo.
 - **Finanzas** — tres pestañas:
   - **Resultados** — estado de resultados (semana, después mes), mismas filas que el Excel EE.RR., gráfico, efectivo, alquileres fijos
   - **Movimientos** — listado; al crear hay que elegir el rubro
   - **Salarios** — sueldo fijo / por trabajos / ambos; el pago es un egreso
 
 En pantalla se dice **egreso** (no “gasto”). Plastic 27 en Finanzas es **compra de filamento** (costo directo), no venta.
+
+El árbol de carpetas (módulos, componentes, tablas) está en `CONTEXT.md`.
 
 ## Setup
 

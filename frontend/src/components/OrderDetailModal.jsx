@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { Camera, Trash2, MessageCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { MessageCircle } from 'lucide-react'
 import Modal from './Modal'
 import PhotoLightbox from './PhotoLightbox'
 import { useToast } from './Toast'
@@ -9,9 +9,7 @@ import { api, formatCurrency, formatDate, formatOT, openWhatsApp, whatsappUrl } 
 export default function OrderDetailModal({ order, open, onClose, onCountChange }) {
   const [photos, setPhotos] = useState([])
   const [loading, setLoading] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const [lightbox, setLightbox] = useState(null)
-  const inputRef = useRef(null)
   const { toast } = useToast()
 
   const loadPhotos = async () => {
@@ -35,37 +33,6 @@ export default function OrderDetailModal({ order, open, onClose, onCountChange }
       setLightbox(null)
     }
   }, [open, order?.id])
-
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    if (photos.length >= 3) {
-      toast('Máximo 3 fotos por OT', 'error')
-      return
-    }
-    setUploading(true)
-    try {
-      await api.uploadOrderPhoto(order.id, file)
-      toast('Foto subida', 'success')
-      await loadPhotos()
-    } catch (err) {
-      toast(err.message, 'error')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const handleDelete = async (photo, ev) => {
-    ev.stopPropagation()
-    if (!confirm('¿Quitar esta foto?')) return
-    try {
-      await api.deleteOrderPhoto(order.id, photo.id)
-      await loadPhotos()
-    } catch (err) {
-      toast(err.message, 'error')
-    }
-  }
 
   if (!order) return null
 
@@ -113,49 +80,22 @@ export default function OrderDetailModal({ order, open, onClose, onCountChange }
           ))}
 
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="label mb-0">Fotos (máx. 3)</label>
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                disabled={uploading || photos.length >= 3}
-                onClick={() => inputRef.current?.click()}
-              >
-                <Camera size={14} /> {uploading ? 'Subiendo...' : 'Subir foto'}
-              </button>
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                capture="environment"
-                className="hidden"
-                onChange={handleUpload}
-              />
-            </div>
-            <p className="text-xs text-slate-400 mb-2">Desde el celular se abre la cámara o la galería. Jpg/png/webp, hasta 5 MB.</p>
+            <label className="label mb-0">Fotos</label>
             {loading ? (
-              <p className="text-sm text-slate-400">Cargando fotos...</p>
+              <p className="text-sm text-slate-400 mt-2">Cargando fotos...</p>
             ) : photos.length === 0 ? (
-              <p className="text-sm text-slate-400">Sin fotos todavía.</p>
+              <p className="text-sm text-slate-400 mt-2">Sin fotos. Se cargan al crear o editar la OT.</p>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 mt-2">
                 {photos.map((p, i) => (
-                  <div key={p.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setLightbox(i)}
-                      className="block w-20 h-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-100"
-                    >
-                      <img src={p.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => handleDelete(p, e)}
-                      className="absolute -top-1 -right-1 p-0.5 rounded-full bg-white text-red-500 shadow border border-slate-200"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setLightbox(i)}
+                    className="block w-20 h-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-100"
+                  >
+                    <img src={p.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                  </button>
                 ))}
               </div>
             )}

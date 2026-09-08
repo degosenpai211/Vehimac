@@ -1,3 +1,5 @@
+import { compressOrderPhoto } from '../utils/compressImage'
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 export class ApiError extends Error {
@@ -74,8 +76,9 @@ export const api = {
   deleteWorkOrder: (id) => request(`/work-orders/${id}`, { method: 'DELETE' }),
   getOrderPhotos: (id) => request(`/work-orders/${id}/photos`),
   uploadOrderPhoto: async (id, file) => {
+    const toUpload = await compressOrderPhoto(file)
     const form = new FormData()
-    form.append('file', file)
+    form.append('file', toUpload)
     let res
     try {
       res = await fetch(`${API_URL}/api/work-orders/${id}/photos`, { method: 'POST', body: form })

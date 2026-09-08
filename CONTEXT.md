@@ -1,6 +1,6 @@
 # Vehimac ERP — Contexto técnico
 
-Documento de continuidad. **Última actualización: 2026-09-04** (proceso por pieza, salarios, estado de resultados).  
+Documento de continuidad. **Última actualización: 2026-09-08** (fotos en alta/edición de OT, compresión, logo proforma).  
 En un chat nuevo: pegá o adjuntá este archivo y pedí “seguí desde CONTEXT.md”.
 
 ---
@@ -11,7 +11,7 @@ Repo: `https://github.com/degosenpai211/Vehimac.git`
 
 | Rama | Qué hay | En GitHub |
 |------|---------|-----------|
-| `master` | Features de producto. **Producción**. Proceso por pieza, salarios y EE.RR. | Sí |
+| `master` | Features de producto. **Producción**. Proceso, salarios, EE.RR., logo oficial de proforma. | Sí |
 | `migracion-vps` | **No hay código de VPS**; no mezclar Path A aquí. | Sí |
 
 No mezclar infra VPS con features. Path A (Postgres nativo, Nginx, PM2, Hostinger) **no está implementado**. `config.py` / `database.py` siguen con `SUPABASE_URL` + `SUPABASE_KEY` + `supabase-py`.
@@ -86,9 +86,13 @@ Tres pestañas: **Resultados** | **Movimientos** | **Salarios**.
 
 ### Proformas, fotos, PWA, QR OT
 
-- Proformas: sin Aprobar. PDF teal + WhatsApp al cliente (bucket `proforma-pdfs`). SQL v6, v8, v9. Logo oficial `frontend/public/vehimac-logo.jpg`. Cierre: «Atentos a su confirmación». Cabecera: teléfonos 71015081 / 60830350 (sin NIT).
-- Fotos OT: bucket `ot-photos`, máx. 3. SQL v7.
-- QR cobro OT: Mercantil ↔ Ganadero. BNB solo en Finanzas (ahora como compra Plastic 27).
+- Proformas: sin Aprobar. PDF teal + WhatsApp (bucket `proforma-pdfs`). SQL v6, v8, v9.
+- Logo oficial `frontend/public/vehimac-logo.jpg` (ya no es el SVG aproximado).
+- Cabecera: **VEHIMAC** subrayado → eslogan *Soluciones con impresiones 3D — Plastic 27* → **Teléfonos: 71015081 / 60830350** (sin NIT) → dirección Hilandería.
+- Debajo de Nota: **Atentos a su confirmación** (no va Marcelo / Gerente general).
+- Al **convertir a OT**: el texto de la línea de cotización entra en `part_name` (**Pieza**). La descripción del trabajo copia lo mismo para no quedar vacía; se puede editar después. OTs convertidas *antes* de este cambio no se corrigen solas.
+- Fotos OT: bucket `ot-photos`, máx. 3. SQL v7. Se sacan/cargan **al crear o editar** la OT (`OrderPhotosField`). Se comprimen en el celular (`browser-image-compression`, ~1.3 MB / 2200 px) antes de subir; si falla, va el original. Al editar se puede borrar y volver a subir. El ícono de cámara en la **card del Kanban** está oculto (`SHOW_CARD_PHOTO_ICON = false` en `Ordenes.jsx`); el detalle con galería sigue existiendo por si se vuelve a mostrar.
+- QR cobro OT: Mercantil ↔ Ganadero. BNB solo en Finanzas (compra Plastic 27).
 - PWA iPhone: PNG apple-touch, nav inferior, agregar desde Safari.
 
 ### No implementado (acordado)
@@ -129,6 +133,109 @@ Producción **ya tiene** v2 y v3. Ir en orden lo que falte:
 API `/api`: `clients`, `mechanics`, `work-orders`, `proformas`, `stored-pieces`, `finances` (`/pl`, `/settings`, `/salaries`, `/rents/{1|2}`), `dashboard`.
 
 Front: `/`, `/piezas-guardadas`, `/clientes`, `/equipo`, `/ordenes`, `/proformas`, `/finanzas`.
+
+---
+
+## Árbol del repo (solo lo del proyecto)
+
+Sin `node_modules`, `venv`, `dist`, `__pycache__`, lockfiles ni configs default de Vite/Tailwind.
+
+```
+vehimac/
+├── README.md
+├── CONTEXT.md
+├── COTIZACION.md
+├── backend/
+│   ├── migrate.py
+│   ├── requirements.txt
+│   ├── railway.toml
+│   └── app/
+│       ├── main.py
+│       ├── config.py
+│       ├── database.py
+│       ├── routers/
+│       │   ├── clients.py
+│       │   ├── mechanics.py
+│       │   ├── work_orders.py
+│       │   ├── proformas.py
+│       │   ├── stored_pieces.py
+│       │   ├── finances.py
+│       │   └── dashboard.py
+│       ├── schemas/
+│       │   ├── client.py
+│       │   ├── mechanic.py
+│       │   ├── work_order.py
+│       │   ├── proforma.py
+│       │   ├── finance.py
+│       │   └── product.py
+│       ├── services/
+│       │   ├── orders.py
+│       │   ├── billing.py
+│       │   ├── salary.py
+│       │   ├── pl.py
+│       │   ├── photos.py
+│       │   └── proforma_pdf.py
+│       └── utils/
+│           └── phone.py
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   ├── index.css
+│   │   ├── pages/
+│   │   │   ├── Dashboard.jsx          # /
+│   │   │   ├── PiezasGuardadas.jsx    # /piezas-guardadas
+│   │   │   ├── Clientes.jsx           # /clientes
+│   │   │   ├── Equipo.jsx             # /equipo
+│   │   │   ├── Ordenes.jsx            # /ordenes
+│   │   │   ├── Proformas.jsx          # /proformas
+│   │   │   └── Finanzas.jsx           # /finanzas
+│   │   ├── components/
+│   │   │   ├── Layout.jsx
+│   │   │   ├── AgendaList.jsx
+│   │   │   ├── ClientSearch.jsx
+│   │   │   ├── MechanicSearch.jsx
+│   │   │   ├── PieceProcessFields.jsx
+│   │   │   ├── OrderDetailModal.jsx
+│   │   │   ├── PaymentQrModal.jsx
+│   │   │   ├── ProductQrModal.jsx
+│   │   │   ├── PhotoLightbox.jsx
+│   │   │   ├── OrderPhotosField.jsx
+│   │   │   ├── RescheduleRow.jsx
+│   │   │   ├── ProformaSheet.jsx
+│   │   │   ├── ProformaPreview.jsx
+│   │   │   ├── VehimacLogo.jsx
+│   │   │   ├── FinanceChart.jsx
+│   │   │   ├── ResultsSection.jsx
+│   │   │   ├── SalarySection.jsx
+│   │   │   ├── StatCard.jsx
+│   │   │   ├── Modal.jsx
+│   │   │   ├── Toast.jsx
+│   │   │   ├── Loading.jsx
+│   │   │   └── EmptyState.jsx
+│   │   ├── services/
+│   │   │   ├── api.js
+│   │   │   └── proformaPdf.js
+│   │   └── utils/
+│   │       ├── status.js
+│   │       ├── process.js
+│   │       ├── financeCatalog.js
+│   │       ├── notifications.js
+│   │       └── compressImage.js
+│   └── public/
+│       ├── vehimac-logo.jpg
+│       └── qr/
+│           ├── mercantil.jpg
+│           ├── ganadero.jpg
+│           └── bnb-plastic27.jpg
+└── supabase/
+    ├── schema.sql                 # solo proyecto nuevo
+    └── migration_v2.sql … v13.sql
+```
+
+**Tablas** (después de las migraciones): `clients`, `vehicles`, `mechanics`, `work_orders`, `order_items`, `order_photos`, `proformas`, `proforma_items`, `finances`, `finance_settings`.
+
+**Buckets Storage:** `ot-photos`, `proforma-pdfs`.
 
 ---
 

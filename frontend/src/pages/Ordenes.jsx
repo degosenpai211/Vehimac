@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import { Plus, Pencil, Trash2, Search, Copy, QrCode, MessageCircle, Camera, GripVertical, Check } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -6,6 +6,7 @@ import Modal from '../components/Modal'
 import ClientSearch from '../components/ClientSearch'
 import PaymentQrModal from '../components/PaymentQrModal'
 import OrderDetailModal from '../components/OrderDetailModal'
+import OrderPhotosField from '../components/OrderPhotosField'
 import RescheduleRow from '../components/RescheduleRow'
 import PieceProcessFields from '../components/PieceProcessFields'
 import Loading from '../components/Loading'
@@ -37,6 +38,9 @@ const AGENDA = [
 
 const COLUMN_PAGE = 10
 
+/** Ícono de cámara + conteo en la card del Kanban. Oculto por ahora; dejar en true para volver a mostrarlo. */
+const SHOW_CARD_PHOTO_ICON = false
+
 export default function Ordenes() {
   const [board, setBoard] = useState({ en_proceso: [], terminado: [], entregado: [] })
   const [loading, setLoading] = useState(true)
@@ -59,6 +63,7 @@ export default function Ordenes() {
   const [qrOrder, setQrOrder] = useState(null)
   const [detailOrder, setDetailOrder] = useState(null)
   const [expandedCols, setExpandedCols] = useState({})
+  const photosRef = useRef(null)
   const { toast } = useToast()
   const [searchParams] = useSearchParams()
 
@@ -202,7 +207,12 @@ export default function Ordenes() {
         toast('Orden actualizada', 'success')
       } else {
         const created = await api.createWorkOrder(payload)
-        toast(`${formatOT(created)} creada`, 'success')
+        const uploaded = await photosRef.current?.flushPending(created.id)
+        if (uploaded > 0) {
+          toast(`${formatOT(created)} creada con ${uploaded} foto${uploaded === 1 ? '' : 's'}`, 'success')
+        } else {
+          toast(`${formatOT(created)} creada`, 'success')
+        }
       }
       setModalOpen(false)
       load()
@@ -373,6 +383,7 @@ export default function Ordenes() {
             }`}>
               {order.billing_type === 'con_factura' ? 'Con factura' : 'Sin factura'}
             </span>
+              {SHOW_CARD_PHOTO_ICON && (
               <button
                 type="button"
                 onMouseDown={(e) => e.stopPropagation()}
@@ -382,6 +393,7 @@ export default function Ordenes() {
               >
                 <Camera size={13} /> {order.photo_count || 0}
               </button>
+              )}
           </div>
           <div className="flex flex-wrap gap-x-3 text-xs text-slate-400">
             <span>Inicio: {formatDate(order.entry_date)}</span>
@@ -615,6 +627,23 @@ export default function Ordenes() {
               </div>
             ))}
           </div>
+
+          {modalOpen && (
+            <OrderPhotosField
+              key={editing?.id || 'new'}
+              ref={photosRef}
+              orderId={editing?.id || null}
+              onCountChange={(orderId, count) => {
+                setBoard((prev) => {
+                  const next = { ...prev }
+                  for (const col of Object.keys(next)) {
+                    next[col] = next[col].map((o) => (o.id === orderId ? { ...o, photo_count: count } : o))
+                  }
+                  return next
+                })
+              }}
+            />
+          )}
 
           <div className="p-4 bg-brand-50 border border-brand-200 rounded-lg space-y-3">
             <div>
