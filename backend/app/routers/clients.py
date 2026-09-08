@@ -2,24 +2,28 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.database import get_supabase
+from app.database import fetch_in, get_supabase, in_parallel
 from app.schemas.client import ClientCreate, ClientResponse, ClientUpdate, VehicleCreate, VehicleResponse
 from app.utils.phone import normalize_bolivia_phone
 
 router = APIRouter(prefix="/clients", tags=["Clientes"])
 
 
-def _enrich_clients_batch(db, clients: list[dict]) -> list[dict]:
-    if not clients:
-        return []
-
+def _attach_vehicles(db, clients: list[dict]) -> None:
     client_ids = [c["id"] for c in clients]
-
     vehicles_result = db.table("vehicles").select("*").in_("client_id", client_ids).execute()
     vehicles_by_client: dict[str, list] = {cid: [] for cid in client_ids}
     for v in vehicles_result.data or []:
         vehicles_by_client.setdefault(v["client_id"], []).append(v)
+    for client in clients:
+        autos = vehicles_by_client.get(client["id"], [])
+        client["vehicles"] = autos
+        client["autos"] = autos
 
+
+def _attach_order_history(db, clients: list[dict]) -> None:
+    """Historial de OT: se arma al vuelo, no hay un contador guardado."""
+    client_ids = [c["id"] for c in clients]
     orders_result = (
         db.table("work_orders")
         .select("id, client_id, ot_number, work_description, status, price_charged, entry_date, created_at")
@@ -31,19 +35,58 @@ def _enrich_clients_batch(db, clients: list[dict]) -> list[dict]:
     stored_count: dict[str, int] = {cid: 0 for cid in client_ids}
     for o in orders_result.data or []:
         cid = o.get("client_id")
-        if cid in orders_by_client:
-            orders_by_client[cid].append(o)
-            if o.get("status") == "terminado":
-                stored_count[cid] = stored_count.get(cid, 0) + 1
+        if cid not in orders_by_client:
+            continue
+        orders_by_client[cid].append(o)
+        if o.get("status") == "terminado":
+            stored_count[cid] += 1
+    for client in clients:
+        cid = client["id"]
+        client["work_orders"] = orders_by_client.get(cid, [])
+        client["stored_pieces_count"] = stored_count.get(cid, 0)
 
+
+def _enrich_clients_list(db, clients: list[dict]) -> list[dict]:
+    if not clients:
+        return []
+    client_ids = [c["id"] for c in clients]
+
+    def q_vehicles():
+        return fetch_in(db, "vehicles", "client_id", client_ids)
+
+    def q_stored():
+        return (
+            db.table("work_orders")
+            .select("client_id")
+            .eq("status", "terminado")
+            .in_("client_id", client_ids)
+            .execute()
+        )
+
+    vehicles, stored_res = in_parallel(q_vehicles, q_stored)
+    vehicles_by_client: dict[str, list] = {cid: [] for cid in client_ids}
+    for v in vehicles:
+        vehicles_by_client.setdefault(v["client_id"], []).append(v)
+    stored_count: dict[str, int] = {cid: 0 for cid in client_ids}
+    for o in stored_res.data or []:
+        cid = o.get("client_id")
+        if cid in stored_count:
+            stored_count[cid] += 1
     for client in clients:
         cid = client["id"]
         autos = vehicles_by_client.get(cid, [])
         client["vehicles"] = autos
         client["autos"] = autos
-        client["work_orders"] = orders_by_client.get(cid, [])
         client["stored_pieces_count"] = stored_count.get(cid, 0)
+        client.setdefault("work_orders", [])
+    return clients
 
+
+def _enrich_clients_detail(db, clients: list[dict]) -> list[dict]:
+    if not clients:
+        return []
+    _attach_vehicles(db, clients)
+    _attach_order_history(db, clients)
     return clients
 
 
@@ -81,7 +124,7 @@ def list_clients(
     query = query.order(sort_col, desc=desc).range(offset, offset + limit - 1)
 
     result = query.execute()
-    clients = _enrich_clients_batch(db, result.data or [])
+    clients = _enrich_clients_list(db, result.data or [])
 
     if has_stored_pieces is True:
         clients = [c for c in clients if c.get("stored_pieces_count", 0) > 0]
@@ -102,7 +145,7 @@ def get_client(client_id: UUID):
     result = db.table("clients").select("*").eq("id", str(client_id)).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
-    return _enrich_clients_batch(db, result.data)[0]
+    return _enrich_clients_detail(db, result.data)[0]
 
 
 @router.post("", response_model=ClientResponse, status_code=201)
@@ -121,7 +164,7 @@ def create_client(client: ClientCreate):
         v_data["client_id"] = new_client["id"]
         db.table("vehicles").insert(v_data).execute()
 
-    return _enrich_clients_batch(db, [new_client])[0]
+    return _enrich_clients_detail(db, [new_client])[0]
 
 
 @router.patch("/{client_id}", response_model=ClientResponse)
@@ -140,7 +183,7 @@ def update_client(client_id: UUID, client: ClientUpdate):
     result = db.table("clients").update(data).eq("id", str(client_id)).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
-    return _enrich_clients_batch(db, result.data)[0]
+    return _enrich_clients_detail(db, result.data)[0]
 
 
 @router.delete("/{client_id}", status_code=204)

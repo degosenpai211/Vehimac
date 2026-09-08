@@ -17,6 +17,7 @@ export default function Clientes() {
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [searchDebounced, setSearchDebounced] = useState('')
   const [sortBy, setSortBy] = useState('name')
   const [sortDir, setSortDir] = useState('asc')
   const [hasStored, setHasStored] = useState('')
@@ -31,7 +32,7 @@ export default function Clientes() {
   const load = () => {
     setLoading(true)
     const params = { sort_by: sortBy, sort_dir: sortDir }
-    if (search) params.search = search
+    if (searchDebounced) params.search = searchDebounced
     if (hasStored === 'yes') params.has_stored_pieces = true
     if (hasStored === 'no') params.has_stored_pieces = false
     api.getClients(params)
@@ -40,7 +41,12 @@ export default function Clientes() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [search, sortBy, sortDir, hasStored])
+  useEffect(() => {
+    const t = setTimeout(() => setSearchDebounced(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  useEffect(() => { load() }, [searchDebounced, sortBy, sortDir, hasStored])
 
   const openCreate = () => {
     setEditing(null)

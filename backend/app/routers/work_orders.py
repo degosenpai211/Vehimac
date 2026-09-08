@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from decimal import Decimal
 
-from app.database import get_supabase
+from app.database import fetch_in, get_supabase
 from app.schemas.work_order import (
     BillingType,
     OrderItemCreate,
@@ -42,18 +42,24 @@ def _summary_from_pieces(pieces: list) -> dict:
 
 
 def _attach_pieces(db, order: dict) -> dict:
-    items = (
-        db.table("order_items")
-        .select("*")
-        .eq("work_order_id", order["id"])
-        .order("sort_order")
-        .execute()
-    )
-    order["pieces"] = items.data or []
-    for item in order["pieces"]:
+    _attach_pieces_many(db, [order])
+    return order
+
+
+def _attach_pieces_many(db, orders: list[dict]) -> list[dict]:
+    if not orders:
+        return orders
+    ids = [o["id"] for o in orders]
+    by_order = {oid: [] for oid in ids}
+    for item in fetch_in(db, "order_items", "work_order_id", ids):
         if item.get("process") is None:
             item["process"] = {}
-    return order
+        by_order.setdefault(item["work_order_id"], []).append(item)
+    for oid, items in by_order.items():
+        items.sort(key=lambda x: x.get("sort_order") or 0)
+    for order in orders:
+        order["pieces"] = by_order.get(order["id"], [])
+    return orders
 
 
 def _enrich_order(order: dict) -> dict:
@@ -221,10 +227,8 @@ def list_work_orders(
     query = query.order(sort_col, desc=desc).range(offset, offset + limit - 1)
 
     result = query.execute()
-    orders = []
-    for o in result.data or []:
-        order = _enrich_order(o)
-        orders.append(_attach_pieces(db, order))
+    orders = [_enrich_order(o) for o in (result.data or [])]
+    _attach_pieces_many(db, orders)
     if orders:
         counts = photo_counts_by_order(db, [o["id"] for o in orders])
         for o in orders:
@@ -243,15 +247,12 @@ def get_kanban_board(period: str | None = Query(None, description="today | week 
         .order("ot_number", desc=True)
         .execute()
     )
+    prepared = [_enrich_order(raw) for raw in (result.data or [])]
+    _attach_pieces_many(db, prepared)
     board = {"en_proceso": [], "terminado": [], "entregado": []}
-    prepared = []
-    for raw in result.data or []:
-        order = _attach_pieces(db, _enrich_order(raw))
-        if not _matches_period(order, period):
-            continue
-        prepared.append(order)
-    counts = photo_counts_by_order(db, [o["id"] for o in prepared])
-    for order in prepared:
+    filtered = [o for o in prepared if _matches_period(o, period)]
+    counts = photo_counts_by_order(db, [o["id"] for o in filtered])
+    for order in filtered:
         order["photo_count"] = counts.get(order["id"], 0)
         status = order.get("status", "en_proceso")
         if status == "finalizado":

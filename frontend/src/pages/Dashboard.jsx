@@ -160,8 +160,8 @@ export default function Dashboard() {
   const alarmCount = (alarms.overdue?.length || 0) + (alarms.due_today?.length || 0) + (alarms.due_tomorrow?.length || 0)
 
   useEffect(() => {
-    Promise.all([api.getStats(), api.getFinanceTrends()])
-      .then(([s, t]) => { setStats(s); setTrends(t) })
+    api.getStats()
+      .then((s) => { setStats(s); setTrends(s.finance_trends || null) })
       .catch((err) => toast(err.message, 'error'))
       .finally(() => setLoading(false))
   }, [toast])

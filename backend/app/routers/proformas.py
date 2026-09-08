@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
-from app.database import get_supabase
+from app.database import fetch_in, get_supabase
 from app.routers.work_orders import (
     _billing_fields,
     _full_order,
@@ -48,15 +48,22 @@ def _enrich(proforma: dict) -> dict:
 
 
 def _attach_items(db, proforma: dict) -> dict:
-    items = (
-        db.table("proforma_items")
-        .select("*")
-        .eq("proforma_id", proforma["id"])
-        .order("sort_order")
-        .execute()
-    )
-    proforma["pieces"] = items.data or []
+    _attach_items_many(db, [proforma])
     return proforma
+
+
+def _attach_items_many(db, rows: list[dict]) -> list[dict]:
+    if not rows:
+        return rows
+    ids = [r["id"] for r in rows]
+    by_id = {pid: [] for pid in ids}
+    for item in fetch_in(db, "proforma_items", "proforma_id", ids):
+        by_id.setdefault(item["proforma_id"], []).append(item)
+    for pid, items in by_id.items():
+        items.sort(key=lambda x: x.get("sort_order") or 0)
+    for row in rows:
+        row["pieces"] = by_id.get(row["id"], [])
+    return rows
 
 
 def _as_item(piece) -> ProformaItemCreate:
@@ -130,7 +137,8 @@ def list_proformas(status: ProformaStatus | None = Query(None)):
     if status:
         query = query.eq("status", status.value)
     result = query.execute()
-    return [_attach_items(db, _enrich(row)) for row in (result.data or [])]
+    rows = [_enrich(row) for row in (result.data or [])]
+    return _attach_items_many(db, rows)
 
 
 @router.get("/{proforma_id}", response_model=ProformaResponse)

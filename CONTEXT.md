@@ -128,7 +128,8 @@ Producción **ya tiene** v2 y v3. Ir en orden lo que falte:
 - JSX, no TS. Kanban 3 columnas.
 - Piezas de OT ≠ inventario. Piezas guardadas = OT `terminado`.
 - Finanzas: tipo interno `ingreso` \| `gasto`; en pantalla se dice egreso.
-- Categorías del EE.RR. viven en `backend/app/services/pl.py` y `frontend/src/utils/financeCatalog.js`.
+- **Clientes:** la lista no baja el historial de OT. Solo autos + conteo de `terminado`. El historial se arma al abrir el cliente.
+- **Latencia:** cada `.execute()` a Supabase es un viaje de red (Bolivia/Railway → PostgREST). Kanban y lista de proformas ya no hacen N+1 de piezas/líneas. Inicio junta stats+gráfica en un GET y corre las queries en paralelo. Equipo 2–5 s en un `select` chico = red/región, no SQL pesado.
 
 API `/api`: `clients`, `mechanics`, `work-orders`, `proformas`, `stored-pieces`, `finances` (`/pl`, `/settings`, `/salaries`, `/rents/{1|2}`), `dashboard`.
 

@@ -5,23 +5,10 @@ import EmptyState from '../components/EmptyState'
 import { useToast } from '../components/Toast'
 import { api } from '../services/api'
 
-function StaffList({ title, hint, placeholder, role, emptyTitle, emptyHint }) {
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
+function StaffList({ title, hint, placeholder, role, emptyTitle, emptyHint, rows, loading, onCreated, onToggled }) {
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
-  const [showInactive, setShowInactive] = useState(false)
   const { toast } = useToast()
-
-  const load = () => {
-    setLoading(true)
-    api.getMechanics({ active_only: !showInactive, limit: 200, role })
-      .then(setRows)
-      .catch((err) => toast(err.message, 'error'))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => { load() }, [showInactive, role])
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -31,7 +18,7 @@ function StaffList({ title, hint, placeholder, role, emptyTitle, emptyHint }) {
       await api.createMechanic({ name: name.trim(), role })
       setName('')
       toast(role === 'designer' ? 'Diseñador agregado' : 'Mecánico agregado', 'success')
-      load()
+      onCreated?.()
     } catch (err) {
       toast(err.message, 'error')
     } finally {
@@ -43,7 +30,7 @@ function StaffList({ title, hint, placeholder, role, emptyTitle, emptyHint }) {
     try {
       await api.updateMechanic(m.id, { active: !m.active })
       toast(m.active ? 'Desactivado' : 'Reactivado', 'success')
-      load()
+      onToggled?.()
     } catch (err) {
       toast(err.message, 'error')
     }
@@ -68,11 +55,6 @@ function StaffList({ title, hint, placeholder, role, emptyTitle, emptyHint }) {
         </button>
       </form>
 
-      <label className="flex items-center gap-2 text-sm text-slate-600">
-        <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
-        Mostrar desactivados
-      </label>
-
       {loading ? <Loading /> : rows.length === 0 ? (
         <EmptyState title={emptyTitle} description={emptyHint} />
       ) : (
@@ -95,12 +77,34 @@ function StaffList({ title, hint, placeholder, role, emptyTitle, emptyHint }) {
 }
 
 export default function Equipo() {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showInactive, setShowInactive] = useState(false)
+  const { toast } = useToast()
+
+  const load = () => {
+    setLoading(true)
+    api.getMechanics({ active_only: !showInactive, limit: 200 })
+      .then(setRows)
+      .catch((err) => toast(err.message, 'error'))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [showInactive])
+
+  const mechanics = rows.filter((m) => (m.role || 'mechanic') !== 'designer')
+  const designers = rows.filter((m) => m.role === 'designer')
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold">Equipo</h1>
         <p className="text-sm text-slate-500">Mecánicos y diseñadores. No se borran: se desactivan para conservar el historial. El sueldo se carga en Finanzas → Salarios.</p>
       </div>
+      <label className="flex items-center gap-2 text-sm text-slate-600">
+        <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+        Mostrar desactivados
+      </label>
       <div className="grid lg:grid-cols-2 gap-8">
         <StaffList
           title="Mecánicos"
@@ -109,6 +113,10 @@ export default function Equipo() {
           role="mechanic"
           emptyTitle="Sin mecánicos"
           emptyHint="Agregá el primero para usar el autocompletado en las órdenes."
+          rows={mechanics}
+          loading={loading}
+          onCreated={load}
+          onToggled={load}
         />
         <StaffList
           title="Diseñadores"
@@ -117,6 +125,10 @@ export default function Equipo() {
           role="designer"
           emptyTitle="Sin diseñadores"
           emptyHint="Agregá el primero para asignarlo en las órdenes."
+          rows={designers}
+          loading={loading}
+          onCreated={load}
+          onToggled={load}
         />
       </div>
     </div>

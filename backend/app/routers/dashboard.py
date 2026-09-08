@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter
 
-from app.database import get_supabase
+from app.database import get_supabase, in_parallel
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -116,6 +116,35 @@ def _finance_range(records: list, date_from: date, date_to: date) -> dict:
     return _sum_finances(sliced)
 
 
+def _finance_trends_from(records: list, today: date) -> dict:
+    week_start = today - timedelta(days=today.weekday())
+    month_start = date(today.year, today.month, 1)
+    trends = {}
+    for key, days in PERIODS.items():
+        date_from = today - timedelta(days=days)
+        summary = _finance_range(records, date_from, today)
+        summary["period"] = key
+        summary["label"] = {
+            "today": "Hoy",
+            "3d": "Últimos 3 días",
+            "7d": "Última semana",
+            "30d": "Último mes",
+            "90d": "Últimos 3 meses",
+        }[key]
+        trends[key] = summary
+    calendar = {
+        "today": (today, today, "Hoy"),
+        "week": (week_start, today, "Esta semana"),
+        "month": (month_start, today, "Este mes"),
+    }
+    for key, (d_from, d_to, label) in calendar.items():
+        summary = _finance_range(records, d_from, d_to)
+        summary["period"] = key
+        summary["label"] = label
+        trends[key] = summary
+    return trends
+
+
 def _build_kpis(orders: list, finances: list, proformas: list, today: date) -> dict:
     week_start = today - timedelta(days=today.weekday())
     month_start = date(today.year, today.month, 1)
@@ -225,18 +254,43 @@ def _build_kpis(orders: list, finances: list, proformas: list, today: date) -> d
 def get_dashboard_stats():
     db = get_supabase()
     today = date.today()
+    year_start = date(today.year, 1, 1)
+    lookback = today - timedelta(days=90)
+    fin_from = min(year_start, lookback)
 
-    clients = db.table("clients").select("id", count="exact").execute()
-    orders_res = (
-        db.table("work_orders")
-        .select(
-            "id, ot_number, work_description, status, billing_type, total_amount, "
-            "price_charged, advance_amount, advance_recorded, qr_paid, qr_paid_amount, "
-            "estimated_delivery_date, entry_date, updated_at, clients(name)"
+    def q_clients():
+        return db.table("clients").select("id", count="exact").execute()
+
+    def q_orders():
+        return (
+            db.table("work_orders")
+            .select(
+                "id, ot_number, work_description, status, billing_type, total_amount, "
+                "price_charged, advance_amount, advance_recorded, qr_paid, qr_paid_amount, "
+                "estimated_delivery_date, entry_date, updated_at, clients(name)"
+            )
+            .execute()
         )
-        .execute()
+
+    def q_finances():
+        return (
+            db.table("finances")
+            .select("type, amount, category, date")
+            .gte("date", fin_from.isoformat())
+            .execute()
+        )
+
+    def q_proformas():
+        try:
+            return (db.table("proformas").select("id, status").execute()).data or []
+        except Exception:
+            return []
+
+    clients, orders_res, finances, proformas = in_parallel(
+        q_clients, q_orders, q_finances, q_proformas
     )
     orders = orders_res.data or []
+    finances = finances.data or []
 
     orders_by_status = {"en_proceso": 0, "terminado": 0, "entregado": 0}
     for o in orders:
@@ -265,17 +319,6 @@ def get_dashboard_stats():
         and u <= today - timedelta(days=7)
     ]
 
-    finances = (
-        db.table("finances")
-        .select("type, amount, category, date")
-        .gte("date", date(today.year, 1, 1).isoformat())
-        .execute()
-    ).data or []
-    try:
-        proformas = (db.table("proformas").select("id, status").execute()).data or []
-    except Exception:
-        proformas = []
-
     alarms = {
         "overdue": overdue_list,
         "due_today": agenda["due_today"],
@@ -292,6 +335,7 @@ def get_dashboard_stats():
         "delivery_agenda": agenda,
         "alarms": alarms,
         "kpis": _build_kpis(orders, finances, proformas, today),
+        "finance_trends": _finance_trends_from(finances, today),
     }
 
 
@@ -299,8 +343,6 @@ def get_dashboard_stats():
 def get_finance_trends():
     db = get_supabase()
     today = date.today()
-    week_start = today - timedelta(days=today.weekday())
-    month_start = date(today.year, today.month, 1)
     lookback = (today - timedelta(days=90)).isoformat()
     records = (
         db.table("finances")
@@ -309,30 +351,4 @@ def get_finance_trends():
         .lte("date", today.isoformat())
         .execute()
     ).data or []
-
-    trends = {}
-    for key, days in PERIODS.items():
-        date_from = today - timedelta(days=days)
-        summary = _finance_range(records, date_from, today)
-        summary["period"] = key
-        summary["label"] = {
-            "today": "Hoy",
-            "3d": "Últimos 3 días",
-            "7d": "Última semana",
-            "30d": "Último mes",
-            "90d": "Últimos 3 meses",
-        }[key]
-        trends[key] = summary
-
-    calendar = {
-        "today": (today, today, "Hoy"),
-        "week": (week_start, today, "Esta semana"),
-        "month": (month_start, today, "Este mes"),
-    }
-    for key, (d_from, d_to, label) in calendar.items():
-        summary = _finance_range(records, d_from, d_to)
-        summary["period"] = key
-        summary["label"] = label
-        trends[key] = summary
-
-    return trends
+    return _finance_trends_from(records, today)
