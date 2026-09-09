@@ -108,6 +108,7 @@ export const api = {
   updateProforma: (id, data) => request(`/proformas/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   convertProforma: (id, data) =>
     request(`/proformas/${id}/convert`, { method: 'POST', body: JSON.stringify(data) }),
+  acceptProforma: (id) => request(`/proformas/${id}/accept`, { method: 'POST', body: '{}' }),
   deleteProforma: (id) => request(`/proformas/${id}`, { method: 'DELETE' }),
   uploadProformaPdf: async (id, blob, number) => {
     const form = new FormData()

@@ -19,7 +19,7 @@ Cada pieza tiene un **proceso** de 5 pasos (Diseño → Instalación): técnico,
 - **Clientes** — WhatsApp, filtros, piezas sin recoger
 - **Equipo** — mecánicos y diseñadores (activos). El sueldo se carga en Finanzas
 - **Órdenes** — Kanban, proceso por pieza, QR de cobro, WhatsApp. Fotos (máx. 3) al **crear o editar** la OT; se comprimen en el celular. El ícono de cámara en la card del Kanban está **oculto** (el código queda por si se vuelve a mostrar).
-- **Proformas** — PDF con logo oficial VEHIMAC, eslogan *Soluciones con impresiones 3D — Plastic 27*, teléfonos 71015081 / 60830350 (sin NIT). Cierre: «Atentos a su confirmación». Envío por WhatsApp. Al **convertir a OT**, el texto de la cotización va a **Pieza**, no a descripción del trabajo.
+- **Proformas** — PDF con logo oficial VEHIMAC, eslogan *Soluciones con impresiones 3D — Plastic 27*, teléfonos 71015081 / 60830350 (sin NIT). Cierre: «Atentos a su confirmación». Envío por WhatsApp (PDF JPEG liviano). Se puede cotizar a un **interesado** (nombre + WhatsApp) sin pasarlo a Clientes: entra a la ficha cuando **acepta** o al **convertir a OT**. Si no acepta, se borra todo (o a los 7 días). Al **convertir a OT**, el texto de la cotización va a **Pieza**.
 - **Finanzas** — tres pestañas:
   - **Resultados** — estado de resultados (semana, después mes), mismas filas que el Excel EE.RR., gráfico, efectivo, alquileres fijos
   - **Movimientos** — listado; al crear hay que elegir el rubro
@@ -32,9 +32,9 @@ El árbol de carpetas (módulos, componentes, tablas) está en `CONTEXT.md`.
 ## Setup
 
 ### 1. Supabase
-- **Proyecto nuevo (sin tablas):** ejecutar `supabase/schema.sql` y después las migraciones `v2`…`v13` que apliquen
+- **Proyecto nuevo (sin tablas):** ejecutar `supabase/schema.sql` y después las migraciones `v2`…`v14` que apliquen
 - **Proyecto existente:** no ejecutes `schema.sql`. Corré en orden los `supabase/migration_v*.sql` que falten  
-  ⚠️ Lo último: **v11** proceso por pieza, **v12** salarios, **v13** efectivo y alquileres
+  ⚠️ Lo último: **v14** prospectos de proforma (antes: v11 proceso, v12 salarios, v13 efectivo y alquileres)
 
 ### 2. Backend
 ```bash

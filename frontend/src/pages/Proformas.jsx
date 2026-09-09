@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Pencil, Trash2, MessageCircle, X, ArrowRight, Eye } from 'lucide-react'
+import { Plus, Pencil, Trash2, MessageCircle, ArrowRight, Eye, UserPlus } from 'lucide-react'
 import Modal from '../components/Modal'
 import ClientSearch from '../components/ClientSearch'
 import Loading from '../components/Loading'
 import EmptyState from '../components/EmptyState'
-import ProformaSheet, { formatBs, lineFigures, sheetTotals } from '../components/ProformaSheet'
+import ProformaSheet, { formatBs, lineFigures, sheetTotals, proformaContact } from '../components/ProformaSheet'
 import ProformaPreview from '../components/ProformaPreview'
 import { useToast } from '../components/Toast'
 import { api, formatDate, whatsappUrl } from '../services/api'
@@ -25,12 +25,25 @@ const STATUS = {
   convertida: { label: 'Convertida', cls: 'bg-slate-200 text-slate-700' },
 }
 
+function isProspect(p) {
+  return !p?.client_id && !!(p?.prospect_name || p?.prospect_phone)
+}
+
+function daysLeft(expiresAt) {
+  if (!expiresAt) return null
+  const end = new Date(expiresAt)
+  if (Number.isNaN(end.getTime())) return null
+  return Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+}
+
 export default function Proformas() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [clientId, setClientId] = useState('')
+  const [prospectName, setProspectName] = useState('')
+  const [prospectPhone, setProspectPhone] = useState('')
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState([emptyLine()])
   const [saving, setSaving] = useState(false)
@@ -67,6 +80,8 @@ export default function Proformas() {
   const openCreate = () => {
     setEditing(null)
     setClientId('')
+    setProspectName('')
+    setProspectPhone('')
     setNotes('')
     setLines([emptyLine()])
     setModalOpen(true)
@@ -75,6 +90,8 @@ export default function Proformas() {
   const openEdit = (p) => {
     setEditing(p)
     setClientId(p.client_id || '')
+    setProspectName(p.prospect_name || '')
+    setProspectPhone(p.prospect_phone || '')
     setNotes(p.notes || '')
     setLines(
       (p.pieces || []).length
@@ -91,6 +108,8 @@ export default function Proformas() {
 
   const payload = () => ({
     client_id: clientId || null,
+    prospect_name: clientId ? null : (prospectName.trim() || null),
+    prospect_phone: clientId ? null : (prospectPhone.trim() || null),
     notes: notes || null,
     pieces: lines
       .filter((l) => l.description.trim())
@@ -109,6 +128,10 @@ export default function Proformas() {
       toast('Agregá al menos una línea con descripción', 'error')
       return
     }
+    if (!body.client_id && !body.prospect_name) {
+      toast('Indicá un cliente de la ficha o el nombre del interesado', 'error')
+      return
+    }
     setSaving(true)
     try {
       if (editing) await api.updateProforma(editing.id, body)
@@ -124,20 +147,26 @@ export default function Proformas() {
   }
 
   const handleDelete = async (p) => {
-    if (!confirm(`¿Eliminar proforma Nº ${p.number}?`)) return
+    const name = proformaContact(p).name || `Nº ${p.number}`
+    const extra = isProspect(p)
+      ? ' Se borra la proforma, el PDF y los datos del interesado. No queda en Clientes.'
+      : ' Se borra la proforma y el PDF. El cliente de la ficha no se toca.'
+    if (!confirm(`¿No aceptó ${name}?${extra}`)) return
     try {
       await api.deleteProforma(p.id)
-      toast('Eliminada', 'success')
+      toast('Se borró todo', 'success')
       load()
     } catch (err) {
       toast(err.message, 'error')
     }
   }
 
-  const setStatus = async (p, status) => {
+  const handleAccept = async (p) => {
+    const name = proformaContact(p).name || 'este interesado'
+    if (!confirm(`¿${name} aceptó? Se crea la ficha en Clientes.`)) return
     try {
-      await api.updateProforma(p.id, { status })
-      toast(`Marcada como ${STATUS[status].label.toLowerCase()}`, 'success')
+      await api.acceptProforma(p.id)
+      toast('Ya está en Clientes', 'success')
       load()
     } catch (err) {
       toast(err.message, 'error')
@@ -165,9 +194,9 @@ export default function Proformas() {
 
   const sendPdfToClient = async () => {
     if (!preview) return
-    const phone = preview.client?.whatsapp || preview.client?.phone
+    const phone = proformaContact(preview).phone
     if (!whatsappUrl(phone)) {
-      toast('Ese cliente no tiene WhatsApp. Cargalo en su ficha.', 'error')
+      toast('Falta el WhatsApp del interesado o del cliente.', 'error')
       return
     }
     setPdfBusy(true)
@@ -207,7 +236,7 @@ export default function Proformas() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Proformas</h1>
-          <p className="text-sm text-slate-500">Cotización en PDF por WhatsApp. Sin IVA en el papel. Al convertir se crea la OT.</p>
+          <p className="text-sm text-slate-500">Cotización en PDF por WhatsApp. El interesado no entra a Clientes hasta que acepte o lo pases a OT. Si no acepta, se borra todo a los 7 días o con No aceptó.</p>
         </div>
         <button onClick={openCreate} className="btn-primary">
           <Plus size={18} /> Crear proforma
@@ -232,13 +261,16 @@ export default function Proformas() {
             <tbody className="divide-y divide-slate-100">
               {rows.map((p) => {
                 const st = STATUS[p.status] || STATUS.pendiente
+                const contact = proformaContact(p)
+                const prospect = isProspect(p)
+                const left = prospect ? daysLeft(p.prospect_expires_at) : null
                 return (
                   <tr key={p.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-bold text-brand-800">{p.number}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{p.client?.name || '—'}</span>
-                        {whatsappUrl(p.client?.whatsapp || p.client?.phone) && (
+                        <span className="font-medium">{contact.name || '—'}</span>
+                        {whatsappUrl(contact.phone) && (
                           <button
                             type="button"
                             title="Ver y enviar proforma"
@@ -249,6 +281,11 @@ export default function Proformas() {
                           </button>
                         )}
                       </div>
+                      {prospect && (
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          Interesado{left != null ? (left <= 0 ? ' · vence hoy' : ` · ${left} día${left === 1 ? '' : 's'}`) : ''}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-semibold">{formatBs(p.total_amount)}</td>
                     <td className="px-4 py-3">
@@ -265,7 +302,7 @@ export default function Proformas() {
                             <Pencil size={14} />
                           </button>
                         )}
-                        {(p.status === 'pendiente' || p.status === 'aprobada') && (
+                        {(p.status === 'pendiente' || p.status === 'aprobada' || p.status === 'rechazada') && (
                           <button type="button" className="btn-primary btn-sm" onClick={() => {
                             setConvertTarget(p)
                             setAdvanceAmount('')
@@ -274,14 +311,19 @@ export default function Proformas() {
                             <ArrowRight size={14} /> A OT
                           </button>
                         )}
-                        {p.status === 'pendiente' && (
-                          <button type="button" className="p-1.5 rounded-md hover:bg-red-50 text-red-500" onClick={() => setStatus(p, 'rechazada')}>
-                            <X size={14} />
+                        {prospect && p.status !== 'convertida' && (
+                          <button type="button" className="btn-secondary btn-sm" onClick={() => handleAccept(p)}>
+                            <UserPlus size={14} /> Aceptó
                           </button>
                         )}
                         {p.status !== 'convertida' && (
-                          <button type="button" className="p-1.5 rounded-md hover:bg-red-50 text-red-500" onClick={() => handleDelete(p)}>
-                            <Trash2 size={14} />
+                          <button
+                            type="button"
+                            title="No aceptó: borrar todo"
+                            className="btn-sm p-1.5 rounded-md hover:bg-red-50 text-red-600"
+                            onClick={() => handleDelete(p)}
+                          >
+                            <Trash2 size={14} /> No aceptó
                           </button>
                         )}
                       </div>
@@ -296,10 +338,41 @@ export default function Proformas() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Editar Nº ${editing.number}` : 'Nueva proforma'} size="xl">
         <form onSubmit={handleSave} className="space-y-4">
+          <p className="text-sm text-slate-500">
+            Si ya es cliente, buscalo. Si no, cargá nombre y WhatsApp: no entra a Clientes hasta que acepte o lo pases a OT.
+          </p>
           <div>
-            <label className="label">Trabajo para (cliente)</label>
-            <ClientSearch value={clientId} onChange={setClientId} />
+            <ClientSearch value={clientId} onChange={(id) => {
+              setClientId(id)
+              if (id) {
+                setProspectName('')
+                setProspectPhone('')
+              }
+            }} />
           </div>
+          {!clientId && (
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Nombre del interesado</label>
+                <input
+                  className="input"
+                  value={prospectName}
+                  onChange={(e) => setProspectName(e.target.value)}
+                  placeholder="Ej: Juan Pérez"
+                />
+              </div>
+              <div>
+                <label className="label">WhatsApp</label>
+                <input
+                  className="input"
+                  value={prospectPhone}
+                  onChange={(e) => setProspectPhone(e.target.value)}
+                  placeholder="71015081"
+                  inputMode="tel"
+                />
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
               <thead>
@@ -364,8 +437,8 @@ export default function Proformas() {
 
       <Modal open={!!preview} onClose={() => setPreview(null)} title={`Proforma Nº ${preview?.number || ''}`} size="sheet">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-          <p className="text-sm text-slate-600 truncate">{preview?.client?.name || 'Sin cliente'}</p>
-          <button type="button" className="btn min-h-[44px] bg-green-600 text-white hover:bg-green-700" disabled={pdfBusy || !whatsappUrl(preview?.client?.whatsapp || preview?.client?.phone)} onClick={sendPdfToClient}>
+          <p className="text-sm text-slate-600 truncate">{preview ? (proformaContact(preview).name || 'Sin nombre') : ''}</p>
+          <button type="button" className="btn min-h-[44px] bg-green-600 text-white hover:bg-green-700" disabled={pdfBusy || !whatsappUrl(preview ? proformaContact(preview).phone : '')} onClick={sendPdfToClient}>
             <MessageCircle size={16} /> {pdfBusy ? 'Preparando...' : 'Enviar por WhatsApp'}
           </button>
         </div>
@@ -380,7 +453,10 @@ export default function Proformas() {
 
       <Modal open={!!convertTarget} onClose={() => setConvertTarget(null)} title={`Convertir Nº ${convertTarget?.number || ''} a OT`} size="sm">
         <form onSubmit={handleConvert} className="space-y-3">
-          <p className="text-sm text-slate-600">Se crea la orden con el total de la proforma (sin IVA). Solo pedimos el adelanto.</p>
+          <p className="text-sm text-slate-600">
+            Se crea la orden con el total de la proforma (sin IVA). Solo pedimos el adelanto.
+            {convertTarget && isProspect(convertTarget) ? ' Como todavía no es cliente, primero se crea la ficha en Clientes.' : ''}
+          </p>
           <p className="text-sm font-semibold">Total: {formatBs(convertTarget?.total_amount)}</p>
           <div>
             <label className="label">Adelanto (Bs)</label>

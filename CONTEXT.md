@@ -1,6 +1,6 @@
 # Vehimac ERP — Contexto técnico
 
-Documento de continuidad. **Última actualización: 2026-09-08** (fotos en alta/edición de OT, compresión, logo proforma).  
+Documento de continuidad. **Última actualización: 2026-09-09** (prospectos en proforma + PDF JPEG para WhatsApp).  
 En un chat nuevo: pegá o adjuntá este archivo y pedí “seguí desde CONTEXT.md”.
 
 ---
@@ -11,7 +11,7 @@ Repo: `https://github.com/degosenpai211/Vehimac.git`
 
 | Rama | Qué hay | En GitHub |
 |------|---------|-----------|
-| `master` | Features de producto. **Producción**. Proceso, salarios, EE.RR., logo oficial de proforma. | Sí |
+| `master` | Features de producto. **Producción**. Prospectos de proforma, proceso, salarios, EE.RR. | Sí |
 | `migracion-vps` | **No hay código de VPS**; no mezclar Path A aquí. | Sí |
 
 No mezclar infra VPS con features. Path A (Postgres nativo, Nginx, PM2, Hostinger) **no está implementado**. `config.py` / `database.py` siguen con `SUPABASE_URL` + `SUPABASE_KEY` + `supabase-py`.
@@ -86,7 +86,9 @@ Tres pestañas: **Resultados** | **Movimientos** | **Salarios**.
 
 ### Proformas, fotos, PWA, QR OT
 
-- Proformas: sin Aprobar. PDF teal + WhatsApp (bucket `proforma-pdfs`). SQL v6, v8, v9.
+- Proformas: sin Aprobar. PDF teal + WhatsApp (bucket `proforma-pdfs`). SQL v6, v8, v9, **v14**.
+- **Prospecto:** se cotiza con nombre + WhatsApp **sin** crear ficha en Clientes. Entra a `clients` al tocar **Aceptó** (`POST /proformas/{id}/accept`) o al **convertir a OT**. Si no acepta: **No aceptó** borra la proforma, las líneas, el PDF y los datos. Si nadie acepta, a los **7 días** se borra igual (purga al listar/crear; no hay cron).
+- **PDF WhatsApp:** se arma en el browser (html2canvas + jsPDF) como **JPEG comprimido**, no PNG de A4. El PNG superaba 8 MB y el backend lo rechazaba (`El PDF pesa demasiado`). Límite de subida: 8 MB.
 - Logo oficial `frontend/public/vehimac-logo.jpg` (ya no es el SVG aproximado).
 - Cabecera: **VEHIMAC** subrayado → eslogan *Soluciones con impresiones 3D — Plastic 27* → **Teléfonos: 71015081 / 60830350** (sin NIT) → dirección Hilandería.
 - Debajo de Nota: **Atentos a su confirmación** (no va Marcelo / Gerente general).
@@ -120,6 +122,7 @@ Producción **ya tiene** v2 y v3. Ir en orden lo que falte:
 | `migration_v11.sql` | `order_items.process` JSONB |
 | `migration_v12.sql` | salarios en `mechanics` + `finances.mechanic_id` |
 | `migration_v13.sql` | `finance_settings` (efectivo + alquileres fijos) |
+| `migration_v14.sql` | Prospectos en proforma (`prospect_name`, `prospect_phone`, `prospect_expires_at`) |
 
 ---
 
@@ -231,7 +234,7 @@ vehimac/
 │           └── bnb-plastic27.jpg
 └── supabase/
     ├── schema.sql                 # solo proyecto nuevo
-    └── migration_v2.sql … v13.sql
+    └── migration_v2.sql … v14.sql
 ```
 
 **Tablas** (después de las migraciones): `clients`, `vehicles`, `mechanics`, `work_orders`, `order_items`, `order_photos`, `proformas`, `proforma_items`, `finances`, `finance_settings`.

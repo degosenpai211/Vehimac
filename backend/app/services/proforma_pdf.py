@@ -42,6 +42,16 @@ def _signed_url(db, storage_path: str) -> str | None:
     return None
 
 
+def delete_proforma_pdfs(db, proforma_id: str) -> None:
+    try:
+        listed = db.storage.from_(BUCKET).list(proforma_id)
+        names = [item.get("name") for item in (listed or []) if item.get("name")]
+        if names:
+            db.storage.from_(BUCKET).remove([f"{proforma_id}/{n}" for n in names])
+    except Exception:
+        pass
+
+
 def upload_proforma_pdf(db, proforma_id: str, file: UploadFile) -> dict:
     _ensure_bucket(db)
     data = file.file.read()

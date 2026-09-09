@@ -65,13 +65,19 @@ const tdBase = {
   color: '#1e293b',
 }
 
+export function proformaContact(proforma) {
+  return {
+    name: proforma?.client?.name || proforma?.prospect_name || '',
+    phone: proforma?.client?.whatsapp || proforma?.client?.phone || proforma?.prospect_phone || '',
+  }
+}
+
 export default function ProformaSheet({ proforma, sheetRef }) {
   const pieces = proforma?.pieces || []
   const padded = [...pieces]
   while (padded.length < ROWS) padded.push({})
   const totals = sheetTotals(pieces)
-  const client = proforma?.client
-  const contact = client?.whatsapp || client?.phone || ''
+  const contact = proformaContact(proforma)
 
   return (
     <div
@@ -119,13 +125,13 @@ export default function ProformaSheet({ proforma, sheetRef }) {
         <div>
           <span style={{ fontWeight: 700, color: '#4b5563' }}>Cliente : </span>
           <span style={{ marginLeft: 8, borderBottom: '1px solid #cbd5e1', display: 'inline-block', minWidth: 180 }}>
-            {client?.name || ''}
+            {contact.name}
           </span>
         </div>
         <div>
           <span style={{ fontWeight: 700, color: '#4b5563' }}>Contacto:</span>
           <span style={{ marginLeft: 8, borderBottom: '1px solid #cbd5e1', display: 'inline-block', minWidth: 110 }}>
-            {contact}
+            {contact.phone}
           </span>
         </div>
         <div style={{ textAlign: 'right' }}>

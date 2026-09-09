@@ -73,6 +73,8 @@ class ProformaItemResponse(BaseModel):
 
 class ProformaCreate(BaseModel):
     client_id: UUID | None = None
+    prospect_name: str | None = None
+    prospect_phone: str | None = None
     notes: str | None = None
     pieces: list[ProformaItemCreate] = Field(..., min_length=1)
 
@@ -80,11 +82,18 @@ class ProformaCreate(BaseModel):
     def validate_pieces(self):
         if not self.pieces:
             raise ValueError("Debe haber al menos una línea")
+        name = (self.prospect_name or "").strip()
+        if not self.client_id and not name:
+            raise ValueError("Indicá un cliente de la ficha o el nombre del interesado")
+        if name:
+            self.prospect_name = name
         return self
 
 
 class ProformaUpdate(BaseModel):
     client_id: UUID | None = None
+    prospect_name: str | None = None
+    prospect_phone: str | None = None
     notes: str | None = None
     pieces: list[ProformaItemCreate] | None = None
     status: ProformaStatus | None = None
@@ -114,6 +123,9 @@ class ProformaResponse(BaseModel):
     status: ProformaStatus = ProformaStatus.pendiente
     work_order_id: UUID | None = None
     notes: str | None = None
+    prospect_name: str | None = None
+    prospect_phone: str | None = None
+    prospect_expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     client: ProformaClientBrief | None = None
@@ -121,3 +133,4 @@ class ProformaResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        extra = "ignore"
