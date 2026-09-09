@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus, Search, Phone, MessageCircle, Pencil, Trash2, Car, ExternalLink } from 'lucide-react'
 import Modal from '../components/Modal'
 import Loading from '../components/Loading'
@@ -27,7 +28,9 @@ export default function Clientes() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [fromProspect, setFromProspect] = useState(false)
   const { toast } = useToast()
+  const [params, setParams] = useSearchParams()
 
   const load = () => {
     setLoading(true)
@@ -48,8 +51,25 @@ export default function Clientes() {
 
   useEffect(() => { load() }, [searchDebounced, sortBy, sortDir, hasStored])
 
+  useEffect(() => {
+    const id = params.get('completar')
+    if (!id) return
+    let cancelled = false
+    api.getClient(id)
+      .then((c) => {
+        if (cancelled) return
+        setFromProspect(true)
+        openEdit(c)
+        params.delete('completar')
+        setParams(params, { replace: true })
+      })
+      .catch((err) => toast(err.message, 'error'))
+    return () => { cancelled = true }
+  }, [])
+
   const openCreate = () => {
     setEditing(null)
+    setFromProspect(false)
     setForm(emptyForm)
     setModalOpen(true)
   }
@@ -116,12 +136,13 @@ export default function Clientes() {
         for (const a of autos) {
           await api.addAuto(editing.id, a)
         }
-        toast('Cliente actualizado', 'success')
+        toast(fromProspect ? 'Ficha completada' : 'Cliente actualizado', 'success')
       } else {
         await api.createClient({ ...data, autos })
         toast('Cliente creado', 'success')
       }
       setModalOpen(false)
+      setFromProspect(false)
       load()
     } catch (err) {
       toast(err.message, 'error')
@@ -211,8 +232,21 @@ export default function Clientes() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Editar cliente' : 'Nuevo cliente'} size="lg">
+      <Modal
+        open={modalOpen}
+        onClose={() => {
+          setModalOpen(false)
+          setFromProspect(false)
+        }}
+        title={editing ? (fromProspect ? 'Completar ficha' : 'Editar cliente') : 'Nuevo cliente'}
+        size="lg"
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
+          {fromProspect && (
+            <p className="text-sm bg-amber-50 text-amber-900 border border-amber-200 rounded-lg p-3">
+              Esta ficha nació de una proforma: solo tiene nombre y WhatsApp. Cargá el auto (marca, modelo, año) y una nota si hace falta. Las piezas van en la OT.
+            </p>
+          )}
           <div>
             <label className="label">Nombre *</label>
             <input className="input" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -253,7 +287,7 @@ export default function Clientes() {
           </div>
 
           <div className="flex gap-2 justify-end">
-            <button type="button" onClick={() => setModalOpen(false)} className="btn-secondary">Cancelar</button>
+            <button type="button" onClick={() => { setModalOpen(false); setFromProspect(false) }} className="btn-secondary">Cancelar</button>
             <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Guardando...' : 'Guardar'}</button>
           </div>
         </form>

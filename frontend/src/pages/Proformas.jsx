@@ -52,6 +52,7 @@ export default function Proformas() {
   const [convertTarget, setConvertTarget] = useState(null)
   const [advanceAmount, setAdvanceAmount] = useState('')
   const [registerAdvance, setRegisterAdvance] = useState(false)
+  const [fichaHint, setFichaHint] = useState(null)
   const pdfRef = useRef(null)
   const { toast } = useToast()
   const navigate = useNavigate()
@@ -147,14 +148,18 @@ export default function Proformas() {
   }
 
   const handleDelete = async (p) => {
-    const name = proformaContact(p).name || `Nº ${p.number}`
-    const extra = isProspect(p)
-      ? ' Se borra la proforma, el PDF y los datos del interesado. No queda en Clientes.'
-      : ' Se borra la proforma y el PDF. El cliente de la ficha no se toca.'
-    if (!confirm(`¿No aceptó ${name}?${extra}`)) return
+    const converted = p.status === 'convertida'
+    const ok = converted
+      ? confirm(`¿Quitar la proforma Nº ${p.number} de la lista? La OT y el cliente no se tocan.`)
+      : confirm(
+          isProspect(p)
+            ? `¿No aceptó ${proformaContact(p).name || `Nº ${p.number}`}? Se borra la proforma, el PDF y los datos del interesado. No queda en Clientes.`
+            : `¿No aceptó ${proformaContact(p).name || `Nº ${p.number}`}? Se borra la proforma y el PDF. El cliente de la ficha no se toca.`,
+        )
+    if (!ok) return
     try {
       await api.deleteProforma(p.id)
-      toast('Se borró todo', 'success')
+      toast(converted ? 'Proforma quitada de la lista' : 'Se borró todo', 'success')
       load()
     } catch (err) {
       toast(err.message, 'error')
@@ -165,9 +170,13 @@ export default function Proformas() {
     const name = proformaContact(p).name || 'este interesado'
     if (!confirm(`¿${name} aceptó? Se crea la ficha en Clientes.`)) return
     try {
-      await api.acceptProforma(p.id)
-      toast('Ya está en Clientes', 'success')
+      const created = await api.acceptProforma(p.id)
       load()
+      setFichaHint({
+        clientId: created.client_id,
+        name: created.client?.name || name,
+        otNumber: null,
+      })
     } catch (err) {
       toast(err.message, 'error')
     }
@@ -175,16 +184,27 @@ export default function Proformas() {
 
   const handleConvert = async (e) => {
     e.preventDefault()
+    const wasProspect = isProspect(convertTarget)
+    const prospectNameHint = proformaContact(convertTarget).name
     setSaving(true)
     try {
       const res = await api.convertProforma(convertTarget.id, {
         advance_amount: advanceAmount === '' ? null : Number(advanceAmount),
         register_advance: registerAdvance,
       })
-      toast(`Convertida a ${res.order?.ot_number != null ? `OT${res.order.ot_number}` : 'OT'}`, 'success')
+      const otLabel = res.order?.ot_number != null ? `OT${res.order.ot_number}` : 'OT'
       setConvertTarget(null)
       load()
-      navigate('/ordenes')
+      if (wasProspect) {
+        setFichaHint({
+          clientId: res.proforma?.client_id || res.order?.client_id,
+          name: res.proforma?.client?.name || prospectNameHint,
+          otNumber: otLabel,
+        })
+      } else {
+        toast(`Convertida a ${otLabel}`, 'success')
+        navigate('/ordenes')
+      }
     } catch (err) {
       toast(err.message, 'error')
     } finally {
@@ -324,6 +344,16 @@ export default function Proformas() {
                             onClick={() => handleDelete(p)}
                           >
                             <Trash2 size={14} /> No aceptó
+                          </button>
+                        )}
+                        {p.status === 'convertida' && (
+                          <button
+                            type="button"
+                            title="Quitar de la lista"
+                            className="btn-sm p-1.5 rounded-md hover:bg-red-50 text-red-600"
+                            onClick={() => handleDelete(p)}
+                          >
+                            <Trash2 size={14} /> Quitar
                           </button>
                         )}
                       </div>
@@ -471,6 +501,54 @@ export default function Proformas() {
             <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Convirtiendo...' : 'Convertir'}</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={!!fichaHint}
+        onClose={() => {
+          const goOt = fichaHint?.otNumber
+          setFichaHint(null)
+          if (goOt) navigate('/ordenes')
+        }}
+        title="Cliente creado"
+        size="sm"
+      >
+        {fichaHint && (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-700">
+              Se creó la ficha de <b>{fichaHint.name || 'este cliente'}</b>
+              {fichaHint.otNumber ? ` y la ${fichaHint.otNumber}` : ''}. Por ahora solo tiene nombre y WhatsApp.
+            </p>
+            <p className="text-sm text-slate-600">
+              Conviene completar el auto (marca, modelo, año) y una nota. Las piezas del trabajo van en la orden, no en la ficha.
+            </p>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  const goOt = fichaHint.otNumber
+                  setFichaHint(null)
+                  if (goOt) navigate('/ordenes')
+                }}
+              >
+                {fichaHint.otNumber ? 'Ir a la OT' : 'Después'}
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  const id = fichaHint.clientId
+                  setFichaHint(null)
+                  if (id) navigate(`/clientes?completar=${id}`)
+                  else navigate('/clientes')
+                }}
+              >
+                Completar ficha
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

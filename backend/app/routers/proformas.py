@@ -390,7 +390,5 @@ def accept_proforma(proforma_id: UUID):
 def delete_proforma(proforma_id: UUID):
     db = get_supabase()
     pid = str(proforma_id)
-    old = _full(db, pid)
-    if old.get("status") == "convertida":
-        raise HTTPException(status_code=400, detail="No se puede eliminar una proforma convertida")
+    _full(db, pid)
     _delete_proforma_cascade(db, pid)
