@@ -7,6 +7,7 @@ import Loading from '../components/Loading'
 import EmptyState from '../components/EmptyState'
 import ProformaSheet, { formatBs, lineFigures, sheetTotals, proformaContact } from '../components/ProformaSheet'
 import ProformaPreview from '../components/ProformaPreview'
+import ProformaTrashIcon from '../components/ProformaTrashIcon'
 import { useToast } from '../components/Toast'
 import { api, formatDate, whatsappUrl } from '../services/api'
 import { sendProformaPdfToClient } from '../services/proformaPdf'
@@ -340,20 +341,20 @@ export default function Proformas() {
                           <button
                             type="button"
                             title="No aceptó: borrar todo"
-                            className="btn-sm p-1.5 rounded-md hover:bg-red-50 text-red-600"
+                            className="btn-sm p-1.5 rounded-md hover:bg-slate-100 text-slate-600"
                             onClick={() => handleDelete(p)}
                           >
-                            <Trash2 size={14} /> No aceptó
+                            <ProformaTrashIcon size={15} /> No aceptó
                           </button>
                         )}
                         {p.status === 'convertida' && (
                           <button
                             type="button"
                             title="Quitar de la lista"
-                            className="btn-sm p-1.5 rounded-md hover:bg-red-50 text-red-600"
+                            className="btn-sm p-1.5 rounded-md hover:bg-slate-100 text-slate-600"
                             onClick={() => handleDelete(p)}
                           >
-                            <Trash2 size={14} /> Quitar
+                            <ProformaTrashIcon size={15} /> Quitar
                           </button>
                         )}
                       </div>

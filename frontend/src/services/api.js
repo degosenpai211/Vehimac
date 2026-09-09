@@ -9,7 +9,9 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, options = {}) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+async function request(path, options = {}, attempt = 0) {
   let res
   try {
     res = await fetch(`${API_URL}/api${path}`, {
@@ -17,6 +19,11 @@ async function request(path, options = {}) {
       ...options,
     })
   } catch {
+    const method = (options.method || 'GET').toUpperCase()
+    if (attempt < 1 && (method === 'GET' || method === 'HEAD')) {
+      await sleep(400)
+      return request(path, options, attempt + 1)
+    }
     throw new ApiError('Sin conexión al servidor. Verificá que el backend esté corriendo.', 0)
   }
 
