@@ -83,7 +83,32 @@ def _enrich_order(order: dict) -> dict:
     order.setdefault("qr_paid_amount", 0)
     order.setdefault("photo_count", 0)
     order.setdefault("designer", None)
+    order.setdefault("vehicle_label", None)
     return order
+
+
+def _vehicle_label(row: dict | None) -> str | None:
+    if not row:
+        return None
+    parts = [str(row.get(k) or "").strip() for k in ("make", "model")]
+    label = " ".join(p for p in parts if p)
+    return label or None
+
+
+def _attach_vehicles(db, orders: list[dict]) -> list[dict]:
+    if not orders:
+        return orders
+    client_ids = [o.get("client_id") for o in orders if o.get("client_id")]
+    rows = fetch_in(db, "vehicles", "client_id", client_ids, "client_id, make, model, created_at")
+    first: dict = {}
+    for v in rows:
+        cid = v.get("client_id")
+        prev = first.get(cid)
+        if not prev or str(v.get("created_at") or "") < str(prev.get("created_at") or ""):
+            first[cid] = v
+    for order in orders:
+        order["vehicle_label"] = _vehicle_label(first.get(order.get("client_id")))
+    return orders
 
 
 def _matches_period(order: dict, period: str | None) -> bool:
@@ -181,6 +206,7 @@ def _full_order(db, order_id: str) -> dict:
     if not result.data:
         raise HTTPException(status_code=404, detail="Orden no encontrada")
     order = _enrich_order(result.data[0])
+    _attach_vehicles(db, [order])
     return _attach_pieces(db, order)
 
 
@@ -229,6 +255,7 @@ def list_work_orders(
     result = query.execute()
     orders = [_enrich_order(o) for o in (result.data or [])]
     _attach_pieces_many(db, orders)
+    _attach_vehicles(db, orders)
     if orders:
         counts = photo_counts_by_order(db, [o["id"] for o in orders])
         for o in orders:
@@ -249,6 +276,7 @@ def get_kanban_board(period: str | None = Query(None, description="today | week 
     )
     prepared = [_enrich_order(raw) for raw in (result.data or [])]
     _attach_pieces_many(db, prepared)
+    _attach_vehicles(db, prepared)
     board = {"en_proceso": [], "terminado": [], "entregado": []}
     filtered = [o for o in prepared if _matches_period(o, period)]
     counts = photo_counts_by_order(db, [o["id"] for o in filtered])

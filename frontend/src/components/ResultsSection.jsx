@@ -15,7 +15,6 @@ export default function ResultsSection({ onChanged }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [cash, setCash] = useState('')
   const [rent1, setRent1] = useState('')
   const [rent2, setRent2] = useState('')
   const [saving, setSaving] = useState(false)
@@ -26,7 +25,6 @@ export default function ResultsSection({ onChanged }) {
     try {
       const pl = await api.getProfitLoss({ grain, offset })
       setData(pl)
-      setCash(String(pl.cash_opening ?? ''))
       setRent1(String(pl.rent_1 ?? ''))
       setRent2(String(pl.rent_2 ?? ''))
     } catch (err) {
@@ -43,7 +41,6 @@ export default function ResultsSection({ onChanged }) {
     setSaving(true)
     try {
       await api.updateFinanceSettings({
-        cash_opening: Number(cash) || 0,
         rent_1: Number(rent1) || 0,
         rent_2: Number(rent2) || 0,
       })
@@ -119,15 +116,11 @@ export default function ResultsSection({ onChanged }) {
             <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
               <p className="text-sm font-semibold">Estado de resultados</p>
               <button type="button" className="text-xs font-semibold text-brand-700 min-h-[44px] px-2" onClick={() => setSettingsOpen((v) => !v)}>
-                {settingsOpen ? 'Cerrar ajustes' : 'Efectivo y alquileres'}
+                {settingsOpen ? 'Cerrar ajustes' : 'Alquileres'}
               </button>
             </div>
             {settingsOpen && (
-              <form onSubmit={saveSettings} className="p-3 border-b border-slate-100 grid sm:grid-cols-3 gap-2">
-                <div>
-                  <label className="label">Efectivo inicial</label>
-                  <input className="input" type="number" min="0" step="0.01" value={cash} onChange={(e) => setCash(e.target.value)} />
-                </div>
+              <form onSubmit={saveSettings} className="p-3 border-b border-slate-100 grid sm:grid-cols-2 gap-2">
                 <div>
                   <label className="label">Alquiler 1 (fijo)</label>
                   <input className="input" type="number" min="0" step="0.01" value={rent1} onChange={(e) => setRent1(e.target.value)} />
@@ -136,7 +129,7 @@ export default function ResultsSection({ onChanged }) {
                   <label className="label">Alquiler 2 (fijo)</label>
                   <input className="input" type="number" min="0" step="0.01" value={rent2} onChange={(e) => setRent2(e.target.value)} />
                 </div>
-                <div className="sm:col-span-3 flex justify-end">
+                <div className="sm:col-span-2 flex justify-end">
                   <button type="submit" disabled={saving} className="btn-primary min-h-[44px]">Guardar</button>
                 </div>
               </form>
@@ -179,10 +172,6 @@ export default function ResultsSection({ onChanged }) {
               <div className="px-3 py-2 flex justify-between text-sm bg-amber-50">
                 <span className="text-amber-900">IVA facturado (informativo)</span>
                 <span className="font-medium text-amber-900">{blank(data.iva_facturado)}</span>
-              </div>
-              <div className="px-3 py-3 flex justify-between font-bold bg-slate-50">
-                <span>Efectivo</span>
-                <span>{formatCurrency(data.efectivo)}</span>
               </div>
             </div>
           </div>

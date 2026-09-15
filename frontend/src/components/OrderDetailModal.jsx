@@ -43,22 +43,27 @@ export default function OrderDetailModal({ order, open, onClose, onCountChange }
           <div>
             <p className="font-semibold text-slate-800">{order.work_description}</p>
             {order.client && (
-              <p className="text-sm text-slate-600 mt-1 font-medium inline-flex items-center gap-2">
-                {order.client.name}
-                {whatsappUrl(order.client.whatsapp || order.client.phone) && (
-                  <button
-                    type="button"
-                    title="WhatsApp"
-                    onClick={() => openWhatsApp(
-                      order.client.whatsapp || order.client.phone,
-                      `Hola, te escribo por la ${formatOT(order)}.`,
-                    )}
-                    className="p-2 rounded-md hover:bg-green-50 text-green-600 min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
-                  >
-                    <MessageCircle size={16} />
-                  </button>
+              <div className="mt-1">
+                <p className="text-sm text-slate-600 font-medium inline-flex items-center gap-2">
+                  {order.client.name}
+                  {whatsappUrl(order.client.whatsapp || order.client.phone) && (
+                    <button
+                      type="button"
+                      title="WhatsApp"
+                      onClick={() => openWhatsApp(
+                        order.client.whatsapp || order.client.phone,
+                        `Hola, te escribo por la ${formatOT(order)}.`,
+                      )}
+                      className="p-2 rounded-md hover:bg-green-50 text-green-600 min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
+                    >
+                      <MessageCircle size={16} />
+                    </button>
+                  )}
+                </p>
+                {order.vehicle_label && (
+                  <p className="text-[11px] text-slate-400">{order.vehicle_label}</p>
                 )}
-              </p>
+              </div>
             )}
             <p className="text-sm font-bold mt-1">{formatCurrency(order.total_amount || order.price_charged)}</p>
             <p className="text-xs text-slate-400 mt-1">Inicio: {formatDate(order.entry_date)}</p>

@@ -374,6 +374,9 @@ export default function Ordenes() {
             <p className="text-xs text-slate-500 mt-1">{order.pieces.length} piezas</p>
           )}
           {order.client && <p className="text-sm text-slate-600 mt-1 font-medium">{order.client.name}</p>}
+          {order.vehicle_label && (
+            <p className="text-[11px] text-slate-400 leading-tight">{order.vehicle_label}</p>
+          )}
           <div className="flex justify-end items-center py-2 mt-2 border-t border-slate-100 text-sm">
             <span className="font-bold">{formatCurrency(order.total_amount || order.price_charged)}</span>
           </div>

@@ -21,7 +21,7 @@ Cada pieza tiene un **proceso** de 5 pasos (Diseño → Instalación): técnico,
 - **Órdenes** — Kanban, proceso por pieza, QR de cobro, WhatsApp. Fotos (máx. 3) al **crear o editar** la OT; se comprimen en el celular. El ícono de cámara en la card del Kanban está **oculto** (el código queda por si se vuelve a mostrar).
 - **Proformas** — PDF con logo oficial VEHIMAC, eslogan *Soluciones con impresiones 3D — Plastic 27*, teléfonos 71015081 / 60830350 (sin NIT). Cierre: «Atentos a su confirmación». Envío por WhatsApp (PDF JPEG liviano). Se puede cotizar a un **interesado** (nombre + WhatsApp) sin pasarlo a Clientes: entra a la ficha cuando **acepta** o al **convertir a OT**. Si no acepta, se borra todo (o a los 7 días). Al **convertir a OT**, el texto de la cotización va a **Pieza**.
 - **Finanzas** — tres pestañas:
-  - **Resultados** — estado de resultados (semana, después mes), mismas filas que el Excel EE.RR., gráfico, efectivo, alquileres fijos
+  - **Resultados** — estado de resultados (semana, después mes), mismas filas que el Excel EE.RR., gráfico, alquileres fijos
   - **Movimientos** — listado; al crear hay que elegir el rubro
   - **Salarios** — sueldo fijo / por trabajos / ambos; el pago es un egreso
 

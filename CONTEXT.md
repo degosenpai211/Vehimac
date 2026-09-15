@@ -49,6 +49,7 @@ Deploy breaking: **SQL Supabase → Railway → Vercel**.
 ### Órdenes
 
 - Kanban `en_proceso` → `terminado` → `entregado`. IVA 13% se **suma**. Adelanto tipeable.
+- Debajo del cliente en la card y en el detalle: marca + modelo del **primer auto** de la ficha (para identificar la OT). Si no hay auto cargado, no se muestra nada.
 - WhatsApp: ícono 44px en card OT. iOS/PWA usa `whatsapp://`.
 - **Proceso por pieza** (Excel de OT): 5 pasos fijos — Diseño, Soldadura, Afinado, Pintura, Instalación. Acordeón por pieza. Estado **a mano** (Pendiente / En proceso / Completado) tocando círculo o badge. Check al lado para **confirmar proceso listo** cuando los 5 están Completado. Técnico de Equipo (activos). Fecha/hora por paso. Observación por pieza (máx. 80, sin mostrar el contador). Entrega OT + observación van **al pie**, no como 6.º paso. SQL `migration_v11.sql` (`order_items.process` JSONB).
 - En el form de pieza **no** hay mecánico/diseñador sueltos (van en cada paso). La descripción del trabajo **sí** se mantiene.
@@ -81,7 +82,7 @@ Tres pestañas: **Resultados** | **Movimientos** | **Salarios**.
 
 - **Nuevo registro:** hay que elegir **una de esas filas**. Palabra en UI: **egreso** (en DB el tipo sigue `gasto`).
 - **IVA facturado:** informativo (OT con factura en el período). El pago a impuestos es la fila Tributarios/Fiscales, a mano.
-- **Efectivo:** saldo = efectivo inicial (ajuste) + todos los ingresos − todos los egresos.
+- **Efectivo:** no se muestra en Resultados (confundía al contador). El campo `cash_opening` queda en DB/API, no en la UI. Ajustes del estado: solo alquileres fijos.
 - SQL `migration_v13.sql` (`finance_settings`: `cash_opening`, `rent_1`, `rent_2`).
 
 ### Proformas, fotos, PWA, QR OT

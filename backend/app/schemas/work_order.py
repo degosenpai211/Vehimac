@@ -111,6 +111,7 @@ class WorkOrderResponse(BaseModel):
     client: ClientBrief | None = None
     pieces: list[OrderItemResponse] = []
     photo_count: int = 0
+    vehicle_label: str | None = None
 
     class Config:
         from_attributes = True
