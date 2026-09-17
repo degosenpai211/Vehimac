@@ -36,7 +36,7 @@ Sin auth: cualquiera con la URL opera. Auth queda para **después del VPS**.
 Env:
 
 - Backend: `SUPABASE_URL`, `SUPABASE_KEY` (service role), `CORS_ORIGINS`
-- Frontend: `VITE_API_URL` = URL del backend **sin** `/api`. `api.js` concatena `/api`. Link público de proforma: `https://vehimacc.vercel.app` (`PUBLIC_APP_URL` / `VITE_PUBLIC_APP_URL`).
+- Frontend: `VITE_API_URL` = URL del backend **sin** `/api`. `api.js` concatena `/api`.
 
 Deploy breaking: **SQL Supabase → Railway → Vercel**.
 
@@ -90,7 +90,7 @@ Tres pestañas: **Resultados** | **Movimientos** | **Salarios**.
 
 - Proformas: sin Aprobar. PDF teal + WhatsApp (bucket `proforma-pdfs`). SQL v6, v8, v9, **v14**.
 - **Prospecto:** se cotiza con nombre + WhatsApp **sin** crear ficha en Clientes. Entra a `clients` al tocar **Aceptó** (`POST /proformas/{id}/accept`) o al **convertir a OT**. Si no acepta: **No aceptó** borra la proforma, las líneas, el PDF y los datos. Si nadie acepta, a los **7 días** se borra igual (purga al listar/crear; no hay cron).
-- **PDF WhatsApp:** se arma en el browser (html2canvas + jsPDF) como **JPEG comprimido**. El chat solo lleva el link corto `origen/p/xxxxxx` (30 días). SQL `migration_v16.sql`. Si falta la migración, se manda la URL firmada de Supabase.
+- **PDF WhatsApp:** se arma en el browser (html2canvas + jsPDF) como **JPEG comprimido**. El chat lleva **solo la URL firmada de Supabase** (7 días). El link corto `/p/xxxxxx` está **apagado** (`USE_SHORT_PROFORMA_LINK = False` en `proforma_pdf.py` y `proformaPdf.js`); código y SQL `migration_v16.sql` quedan por si se reactiva.
 - Logo oficial `frontend/public/vehimac-logo.jpg` (ya no es el SVG aproximado).
 - Cabecera: **VEHIMAC** subrayado → eslogan *Soluciones con impresiones 3D — Plastic 27* → **Teléfonos: 71015081 / 60830350** (sin NIT) → dirección Hilandería.
 - Debajo de Nota: **Atentos a su confirmación** (no va Marcelo / Gerente general).
@@ -126,7 +126,7 @@ Producción **ya tiene** v2 y v3. Ir en orden lo que falte:
 | `migration_v13.sql` | `finance_settings` (efectivo + alquileres fijos) |
 | `migration_v14.sql` | Prospectos en proforma (`prospect_name`, `prospect_phone`, `prospect_expires_at`) |
 | `migration_v15.sql` | Rol `admin` en `mechanics` (personal administrativo) |
-| `migration_v16.sql` | Link corto de proforma (`pdf_short_code`, 30 días) |
+| `migration_v16.sql` | Link corto de proforma (`pdf_short_code`) — **apagado** en código |
 
 ---
 

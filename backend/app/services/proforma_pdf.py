@@ -1,4 +1,8 @@
-"""PDF de proforma para enviar por WhatsApp (link corto + URL firmada).
+"""PDF de proforma para enviar por WhatsApp (URL firmada).
+
+El link corto `/p/xxxxxx` quedó implementado pero **apagado**:
+poné USE_SHORT_PROFORMA_LINK = True para volver a mandarlo por WhatsApp.
+SQL: supabase/migration_v16.sql. Ruta pública: /p/:code
 
 TEMPORAL: Supabase Storage, bucket `proforma-pdfs`.
 VPS: guardar en filesystem y devolver URL pública Nginx.
@@ -14,6 +18,8 @@ from app.config import settings
 
 BUCKET = "proforma-pdfs"
 MAX_BYTES = 8 * 1024 * 1024
+USE_SHORT_PROFORMA_LINK = False
+SIGNED_SECONDS = 60 * 60 * 24 * 7
 CLICK_SIGNED_SECONDS = 60 * 60 * 2
 LINK_DAYS = 30
 CODE_LEN = 6
@@ -39,7 +45,7 @@ def _ensure_bucket(db) -> None:
         pass
 
 
-def _signed_url(db, storage_path: str, seconds: int = CLICK_SIGNED_SECONDS) -> str | None:
+def _signed_url(db, storage_path: str, seconds: int = SIGNED_SECONDS) -> str | None:
     try:
         res = db.storage.from_(BUCKET).create_signed_url(storage_path, seconds)
     except Exception:
@@ -124,7 +130,7 @@ def resolve_short_link(db, code: str) -> str:
     expires = _parse_dt(row.get("pdf_expires_at"))
     if not expires or expires < datetime.now(timezone.utc):
         raise HTTPException(status_code=410, detail="Este link venció (vale 30 días).")
-    url = _signed_url(db, row["pdf_storage_path"])
+    url = _signed_url(db, row["pdf_storage_path"], CLICK_SIGNED_SECONDS)
     if not url:
         raise HTTPException(status_code=500, detail="No se pudo abrir el PDF")
     return url
@@ -164,10 +170,10 @@ def upload_proforma_pdf(db, proforma_id: str, file: UploadFile) -> dict:
     url = _signed_url(db, storage_path)
     if not url:
         raise HTTPException(status_code=500, detail="PDF guardado pero no se pudo armar el link")
-    short_code = _save_short_link(db, proforma_id, storage_path)
+    short_code = _save_short_link(db, proforma_id, storage_path) if USE_SHORT_PROFORMA_LINK else None
     return {
         "url": url,
         "path": storage_path,
         "short_code": short_code,
-        "share_url": share_url_for(short_code) or url,
+        "share_url": share_url_for(short_code) if USE_SHORT_PROFORMA_LINK else None,
     }

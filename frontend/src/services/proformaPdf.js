@@ -3,6 +3,8 @@ import { jsPDF } from 'jspdf'
 import { api, openWhatsApp } from './api'
 
 const MAX_UPLOAD = 7.5 * 1024 * 1024
+// Prueba del link corto /p/xxxxxx: dejar en false para mandar la URL larga de Supabase.
+const USE_SHORT_PROFORMA_LINK = false
 
 function canvasToJpeg(canvas, quality) {
   return canvas.toDataURL('image/jpeg', quality)
@@ -42,9 +44,9 @@ export async function sendProformaPdfToClient(element, { id, number, phone } = {
   if (!phone) throw new Error('Ese cliente no tiene WhatsApp. Cargalo en su ficha.')
   const blob = await makeProformaPdf(element)
   const uploaded = await api.uploadProformaPdf(id, blob, number)
-  const share = uploaded?.share_url || (
-    uploaded?.short_code ? `https://vehimacc.vercel.app/p/${uploaded.short_code}` : uploaded?.url
-  )
+  const share = USE_SHORT_PROFORMA_LINK
+    ? (uploaded?.share_url || (uploaded?.short_code ? `https://vehimacc.vercel.app/p/${uploaded.short_code}` : uploaded?.url))
+    : uploaded?.url
   if (!share) throw new Error('No se pudo armar el link del PDF')
   if (!openWhatsApp(phone, share)) {
     throw new Error('No se pudo abrir el WhatsApp de ese cliente')
