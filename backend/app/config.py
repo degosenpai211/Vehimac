@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_key: str
     cors_origins: str = "http://localhost:5173"
+    public_app_url: str = "https://vehimacc.vercel.app"
 
     @property
     def cors_origins_list(self) -> list[str]:

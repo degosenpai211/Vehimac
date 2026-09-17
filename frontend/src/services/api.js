@@ -133,6 +133,7 @@ export const api = {
     }
     return data
   },
+  getProformaShare: (code) => request(`/p/${encodeURIComponent(code)}`),
 
   getMechanics: (params = {}) => {
     const q = new URLSearchParams()

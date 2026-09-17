@@ -222,12 +222,10 @@ export default function Proformas() {
     }
     setPdfBusy(true)
     try {
-      const total = formatBs(preview.total_amount)
       await sendProformaPdfToClient(pdfRef.current, {
         id: preview.id,
         number: preview.number,
         phone,
-        text: `Hola, te envío la proforma VEHIMAC Nº ${preview.number}. Total ${total} (sin IVA).`,
       })
     } catch (err) {
       if (err?.name === 'AbortError') return

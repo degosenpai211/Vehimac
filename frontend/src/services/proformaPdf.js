@@ -38,13 +38,15 @@ async function makeProformaPdf(element) {
   throw new Error('El PDF quedó pesado. Probá de nuevo o recargá la página.')
 }
 
-export async function sendProformaPdfToClient(element, { id, number, phone, text } = {}) {
+export async function sendProformaPdfToClient(element, { id, number, phone } = {}) {
   if (!phone) throw new Error('Ese cliente no tiene WhatsApp. Cargalo en su ficha.')
   const blob = await makeProformaPdf(element)
-  const { url } = await api.uploadProformaPdf(id, blob, number)
-  if (!url) throw new Error('No se pudo armar el link del PDF')
-  const message = `${text || `Hola, te envío la proforma VEHIMAC Nº ${number || ''}.`}\n${url}`
-  if (!openWhatsApp(phone, message)) {
+  const uploaded = await api.uploadProformaPdf(id, blob, number)
+  const share = uploaded?.share_url || (
+    uploaded?.short_code ? `https://vehimacc.vercel.app/p/${uploaded.short_code}` : uploaded?.url
+  )
+  if (!share) throw new Error('No se pudo armar el link del PDF')
+  if (!openWhatsApp(phone, share)) {
     throw new Error('No se pudo abrir el WhatsApp de ese cliente')
   }
   return 'whatsapp'

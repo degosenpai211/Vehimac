@@ -7,10 +7,12 @@ import Ordenes from './pages/Ordenes'
 import Equipo from './pages/Equipo'
 import Finanzas from './pages/Finanzas'
 import Proformas from './pages/Proformas'
+import ProformaPublicLink from './pages/ProformaPublicLink'
 
 export default function App() {
   return (
     <Routes>
+      <Route path="p/:code" element={<ProformaPublicLink />} />
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="piezas-guardadas" element={<PiezasGuardadas />} />
