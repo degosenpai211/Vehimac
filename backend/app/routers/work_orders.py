@@ -21,6 +21,11 @@ from app.services.photos import delete_photo, list_photos, photo_counts_by_order
 router = APIRouter(prefix="/work-orders", tags=["Órdenes de trabajo"])
 
 
+def _sanitize_search(term: str) -> str:
+    cleaned = term.replace(",", " ").replace("(", " ").replace(")", " ").replace("%", "").replace("_", " ")
+    return " ".join(cleaned.split())
+
+
 def _summary_from_pieces(pieces: list) -> dict:
     total = sum(Decimal(str(p.get("amount", 0) if isinstance(p, dict) else p.amount)) for p in pieces)
     first = pieces[0]
@@ -233,12 +238,30 @@ def list_work_orders(
     if client_id:
         query = query.eq("client_id", str(client_id))
     if search:
-        if search.upper().startswith("OT") and search[2:].isdigit():
-            query = query.eq("ot_number", int(search[2:]))
+        q = search.strip()
+        if q.upper().startswith("OT") and q[2:].isdigit():
+            query = query.eq("ot_number", int(q[2:]))
         else:
-            query = query.or_(
-                f"work_description.ilike.%{search}%,part_description.ilike.%{search}%"
-            )
+            safe = _sanitize_search(q)
+            if safe:
+                or_parts = [
+                    f"work_description.ilike.%{safe}%",
+                    f"part_description.ilike.%{safe}%",
+                ]
+                try:
+                    clients = (
+                        db.table("clients")
+                        .select("id")
+                        .ilike("name", f"%{safe}%")
+                        .limit(100)
+                        .execute()
+                    )
+                    client_ids = [str(c["id"]) for c in (clients.data or [])]
+                    if client_ids:
+                        or_parts.append(f"client_id.in.({','.join(client_ids)})")
+                except Exception:
+                    pass
+                query = query.or_(",".join(or_parts))
     if entry_from:
         query = query.gte("entry_date", entry_from)
     if entry_to:

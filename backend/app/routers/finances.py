@@ -233,6 +233,8 @@ def salary_board():
     for m in mechanics:
         mid = str(m["id"])
         mode = m.get("salary_mode") or "both"
+        if (m.get("role") or "") == "admin":
+            mode = "fixed"
         period_type = m.get("salary_period") or "monthly"
         pay_day = m.get("pay_day")
         base = float(m.get("salary_base") or 0)
@@ -262,13 +264,15 @@ def salary_board():
             overdue += 1
         if status == "en_plazo":
             due_soon += 1
-        jobs = jobs_for_worker(
-            items,
-            orders_by_id,
-            m.get("name") or "",
-            current["start"],
-            current["deadline"],
-        )
+        jobs = []
+        if (m.get("role") or "mechanic") != "admin":
+            jobs = jobs_for_worker(
+                items,
+                orders_by_id,
+                m.get("name") or "",
+                current["start"],
+                current["deadline"],
+            )
         workers.append({
             "id": m["id"],
             "name": m.get("name"),

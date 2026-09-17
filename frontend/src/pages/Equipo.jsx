@@ -9,6 +9,11 @@ function StaffList({ title, hint, placeholder, role, emptyTitle, emptyHint, rows
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
+  const createdLabel = {
+    designer: 'Diseñador agregado',
+    admin: 'Administrativo agregado',
+    mechanic: 'Mecánico agregado',
+  }[role] || 'Integrante agregado'
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -17,7 +22,7 @@ function StaffList({ title, hint, placeholder, role, emptyTitle, emptyHint, rows
     try {
       await api.createMechanic({ name: name.trim(), role })
       setName('')
-      toast(role === 'designer' ? 'Diseñador agregado' : 'Mecánico agregado', 'success')
+      toast(createdLabel, 'success')
       onCreated?.()
     } catch (err) {
       toast(err.message, 'error')
@@ -92,20 +97,21 @@ export default function Equipo() {
 
   useEffect(() => { load() }, [showInactive])
 
-  const mechanics = rows.filter((m) => (m.role || 'mechanic') !== 'designer')
+  const mechanics = rows.filter((m) => (m.role || 'mechanic') === 'mechanic')
   const designers = rows.filter((m) => m.role === 'designer')
+  const admins = rows.filter((m) => m.role === 'admin')
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold">Equipo</h1>
-        <p className="text-sm text-slate-500">Mecánicos y diseñadores. No se borran: se desactivan para conservar el historial. El sueldo se carga en Finanzas → Salarios.</p>
+        <p className="text-sm text-slate-500">Mecánicos, diseñadores y personal administrativo. No se borran: se desactivan para conservar el historial. El sueldo se carga en Finanzas → Salarios.</p>
       </div>
       <label className="flex items-center gap-2 text-sm text-slate-600">
         <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
         Mostrar desactivados
       </label>
-      <div className="grid lg:grid-cols-2 gap-8">
+      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-8">
         <StaffList
           title="Mecánicos"
           hint="Se asignan en cada pieza de la orden de trabajo."
@@ -126,6 +132,18 @@ export default function Equipo() {
           emptyTitle="Sin diseñadores"
           emptyHint="Agregá el primero para asignarlo en las órdenes."
           rows={designers}
+          loading={loading}
+          onCreated={load}
+          onToggled={load}
+        />
+        <StaffList
+          title="Personal administrativo"
+          hint="No se asignan a las órdenes. El sueldo se carga en Finanzas → Salarios."
+          placeholder="Nombre del administrativo"
+          role="admin"
+          emptyTitle="Sin personal administrativo"
+          emptyHint="Agregá secretaría, recepción u otro personal de oficina."
+          rows={admins}
           loading={loading}
           onCreated={load}
           onToggled={load}

@@ -479,7 +479,7 @@ export default function Ordenes() {
         </div>
         <div className="relative">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input className="input pl-10" placeholder="Buscar OT, pieza..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className="input pl-10" placeholder="Buscar OT, pieza, cliente..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
           <div><label className="label text-xs">Inicio desde</label><input type="date" className="input" value={entryFrom} onChange={(e) => setEntryFrom(e.target.value)} /></div>

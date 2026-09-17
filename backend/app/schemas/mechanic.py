@@ -7,13 +7,13 @@ from pydantic import BaseModel, Field
 
 class MechanicCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
-    role: str = Field(default="mechanic", pattern="^(mechanic|designer)$")
+    role: str = Field(default="mechanic", pattern="^(mechanic|designer|admin)$")
 
 
 class MechanicUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=120)
     active: bool | None = None
-    role: str | None = Field(None, pattern="^(mechanic|designer)$")
+    role: str | None = Field(None, pattern="^(mechanic|designer|admin)$")
     salary_base: Decimal | None = Field(None, ge=0)
     salary_mode: str | None = Field(None, pattern="^(fixed|per_job|both)$")
     salary_period: str | None = Field(None, pattern="^(weekly|biweekly|monthly)$")

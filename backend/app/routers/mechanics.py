@@ -22,14 +22,14 @@ def list_mechanics(
     search: str | None = Query(None),
     prefix: bool = Query(False),
     active_only: bool = Query(True),
-    role: str | None = Query(None, description="mechanic | designer"),
+    role: str | None = Query(None, description="mechanic | designer | admin"),
     limit: int = Query(50, ge=1, le=200),
 ):
     db = get_supabase()
     query = db.table("mechanics").select("*").order("name")
     if active_only:
         query = query.eq("active", True)
-    if role in ("mechanic", "designer"):
+    if role in ("mechanic", "designer", "admin"):
         query = query.eq("role", role)
     if search:
         pattern = f"{search}%" if prefix else f"%{search}%"
@@ -45,7 +45,7 @@ def list_mechanics(
             query = query.ilike("name", pattern)
         result = query.limit(limit).execute()
         rows = result.data or []
-        if role == "designer":
+        if role in ("designer", "admin"):
             return []
         return [_mechanic_row(r) for r in rows]
     rows = result.data or []
@@ -56,15 +56,26 @@ def list_mechanics(
 def create_mechanic(body: MechanicCreate):
     db = get_supabase()
     payload = {"name": body.name.strip(), "role": body.role}
+    if body.role == "admin":
+        payload["salary_mode"] = "fixed"
     try:
         result = db.table("mechanics").insert(payload).execute()
     except Exception:
-        if body.role != "mechanic":
-            raise HTTPException(
-                status_code=400,
-                detail="Falta la columna de rol. Ejecutá migration_v10.sql en Supabase.",
-            )
-        result = db.table("mechanics").insert({"name": body.name.strip()}).execute()
+        payload.pop("salary_mode", None)
+        try:
+            result = db.table("mechanics").insert(payload).execute()
+        except Exception:
+            if body.role == "admin":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Falta el rol administrativo. Ejecutá migration_v15.sql en Supabase.",
+                )
+            if body.role != "mechanic":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Falta la columna de rol. Ejecutá migration_v10.sql en Supabase.",
+                )
+            result = db.table("mechanics").insert({"name": body.name.strip()}).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Error al crear integrante")
     row = result.data[0]

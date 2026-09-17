@@ -6,6 +6,7 @@ import { api, formatCurrency, formatDate } from '../services/api'
 
 const MODE_LABEL = { fixed: 'Sueldo fijo', per_job: 'Por trabajos', both: 'Fijo + trabajos' }
 const PERIOD_LABEL = { weekly: 'Semanal', biweekly: 'Quincenal', monthly: 'Mensual' }
+const ROLE_LABEL = { designer: 'Diseñador', mechanic: 'Mecánico', admin: 'Administrativo' }
 const WEEKDAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 const STATUS = {
   pagado: { label: 'Pagado', cls: 'bg-emerald-50 text-emerald-700' },
@@ -51,10 +52,11 @@ export default function SalarySection({ onPaid, embedded = false }) {
   useEffect(() => { load() }, [])
 
   const openConfig = (w) => {
+    const isAdmin = w.role === 'admin'
     setConfig(w)
     setForm({
       salary_base: String(w.salary_base || ''),
-      salary_mode: w.salary_mode || 'both',
+      salary_mode: isAdmin ? 'fixed' : (w.salary_mode || 'both'),
       salary_period: w.salary_period || 'monthly',
       pay_day: String(w.pay_day ?? (w.salary_period === 'weekly' ? 4 : 30)),
     })
@@ -66,7 +68,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
     try {
       await api.updateMechanic(config.id, {
         salary_base: Number(form.salary_base) || 0,
-        salary_mode: form.salary_mode,
+        salary_mode: config.role === 'admin' ? 'fixed' : form.salary_mode,
         salary_period: form.salary_period,
         pay_day: Number(form.pay_day) || (form.salary_period === 'weekly' ? 4 : 30),
       })
@@ -159,7 +161,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
                   <div>
                     <p className="font-semibold text-slate-800">{w.name}</p>
                     <p className="text-xs text-slate-500">
-                      {w.role === 'designer' ? 'Diseñador' : 'Mecánico'} · {MODE_LABEL[w.salary_mode]} · {PERIOD_LABEL[w.salary_period]}
+                      {ROLE_LABEL[w.role] || 'Mecánico'} · {MODE_LABEL[w.salary_mode]} · {PERIOD_LABEL[w.salary_period]}
                       {w.salary_mode !== 'per_job' && w.salary_base > 0 ? ` · ${formatCurrency(w.salary_base)}` : ''}
                     </p>
                   </div>
@@ -189,14 +191,16 @@ export default function SalarySection({ onPaid, embedded = false }) {
       <Modal open={!!config} onClose={() => setConfig(null)} title={config ? `Sueldo · ${config.name}` : 'Sueldo'}>
         {config && (
           <form onSubmit={saveConfig} className="space-y-3">
-            <div>
-              <label className="label">Cómo se paga</label>
-              <select className="input" value={form.salary_mode} onChange={(e) => setForm({ ...form, salary_mode: e.target.value })}>
-                <option value="fixed">Sueldo fijo</option>
-                <option value="per_job">Solo por trabajos</option>
-                <option value="both">Fijo + extra por trabajos</option>
-              </select>
-            </div>
+            {config.role !== 'admin' && (
+              <div>
+                <label className="label">Cómo se paga</label>
+                <select className="input" value={form.salary_mode} onChange={(e) => setForm({ ...form, salary_mode: e.target.value })}>
+                  <option value="fixed">Sueldo fijo</option>
+                  <option value="per_job">Solo por trabajos</option>
+                  <option value="both">Fijo + extra por trabajos</option>
+                </select>
+              </div>
+            )}
             <div>
               <label className="label">Período</label>
               <select

@@ -21,7 +21,7 @@ export default function MechanicSearch({ value, onChange, placeholder = 'Mecáni
       if (q) params.search = q
       if (role) params.role = role
       api.getMechanics(params)
-        .then((res) => setResults(res || []))
+        .then((res) => setResults((res || []).filter((m) => m.role !== 'admin')))
         .catch(() => setResults([]))
         .finally(() => setLoading(false))
     }, q ? 200 : 0)

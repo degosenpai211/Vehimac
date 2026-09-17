@@ -57,7 +57,8 @@ Deploy breaking: **SQL Supabase → Railway → Vercel**.
 
 ### Equipo
 
-- Dos listas: mecánicos y diseñadores (`mechanics.role`). SQL `migration_v10.sql`.
+- Tres listas: mecánicos, diseñadores y personal administrativo (`mechanics.role`: `mechanic` | `designer` | `admin`). SQL `migration_v10.sql` + `migration_v15.sql`.
+- Administrativos entran a Finanzas → Salarios (sueldo fijo) y **no** se asignan como técnicos de OT.
 - El sueldo **no** se edita en Equipo; se carga en Finanzas → Salarios.
 
 ### Salarios (Finanzas)
@@ -124,6 +125,7 @@ Producción **ya tiene** v2 y v3. Ir en orden lo que falte:
 | `migration_v12.sql` | salarios en `mechanics` + `finances.mechanic_id` |
 | `migration_v13.sql` | `finance_settings` (efectivo + alquileres fijos) |
 | `migration_v14.sql` | Prospectos en proforma (`prospect_name`, `prospect_phone`, `prospect_expires_at`) |
+| `migration_v15.sql` | Rol `admin` en `mechanics` (personal administrativo) |
 
 ---
 
