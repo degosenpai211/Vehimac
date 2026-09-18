@@ -105,6 +105,7 @@ export function formatProcessDate(value) {
 }
 
 export function orderProcessDone(order) {
+  if (typeof order?.process_done === 'boolean') return order.process_done
   const pieces = order?.pieces || []
   if (!pieces.length) return false
   return pieces.every((p) => normalizeProcess(p.process).confirmed)

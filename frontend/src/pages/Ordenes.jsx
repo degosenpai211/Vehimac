@@ -14,6 +14,7 @@ import { useToast } from '../components/Toast'
 import { api, formatCurrency, formatDate, formatOT, computeBilling, whatsappUrl, openWhatsApp } from '../services/api'
 import { STATUS_COLUMNS } from '../utils/status'
 import { emptyProcess, normalizeProcess, serializeProcess, orderProcessDone } from '../utils/process'
+import { addPendingFicha } from '../utils/pendingFichas'
 
 const emptyPiece = () => ({
   part_name: '',
@@ -48,6 +49,7 @@ export default function Ordenes() {
   const [editing, setEditing] = useState(null)
   const [clientId, setClientId] = useState('')
   const [clientWhatsapp, setClientWhatsapp] = useState('')
+  const [newClientName, setNewClientName] = useState('')
   const [pieces, setPieces] = useState([emptyPiece()])
   const [registerAdvance, setRegisterAdvance] = useState(false)
   const [advanceAmount, setAdvanceAmount] = useState('')
@@ -82,24 +84,13 @@ export default function Ordenes() {
     setLoading(true)
     try {
       const params = {}
+      if (period && period !== 'all') params.period = period
       if (search) params.search = search
       if (entryFrom) params.entry_from = entryFrom
       if (entryTo) params.entry_to = entryTo
       if (deliveryFrom) params.delivery_from = deliveryFrom
       if (deliveryTo) params.delivery_to = deliveryTo
-
-      const kanban = await api.getKanban(period && period !== 'all' ? { period } : {})
-      if (Object.keys(params).length > 0) {
-        const filtered = await api.getWorkOrders(params)
-        const ids = new Set(filtered.map((o) => o.id))
-        const nb = { en_proceso: [], terminado: [], entregado: [] }
-        for (const col of Object.keys(nb)) {
-          nb[col] = (kanban[col] || []).filter((o) => ids.has(o.id))
-        }
-        setBoard(nb)
-      } else {
-        setBoard(kanban)
-      }
+      setBoard(await api.getKanban(params))
     } catch (err) {
       toast(err.message, 'error')
     } finally {
@@ -118,6 +109,7 @@ export default function Ordenes() {
     setEditing(null)
     setClientId('')
     setClientWhatsapp('')
+    setNewClientName('')
     setPieces([emptyPiece()])
     setRegisterAdvance(false)
     setAdvanceAmount('')
@@ -182,10 +174,23 @@ export default function Ordenes() {
       toast('El adelanto debe estar entre 0 y el monto total', 'error')
       return
     }
+    if (!editing && newClientName.trim() && !clientWhatsapp.trim()) {
+      toast('Falta el WhatsApp del cliente nuevo', 'error')
+      return
+    }
     setSaving(true)
     try {
+      let resolvedClientId = clientId
+      let createdFicha = null
+      if (!editing && newClientName.trim()) {
+        createdFicha = await api.createClient({
+          name: newClientName.trim(),
+          whatsapp: clientWhatsapp.trim(),
+        })
+        resolvedClientId = createdFicha.id
+      }
       const payload = {
-        client_id: clientId || null,
+        client_id: resolvedClientId || null,
         estimated_delivery_date: estimatedDelivery || null,
         register_advance: registerAdvance,
         billing_type: billingType,
@@ -199,8 +204,8 @@ export default function Ordenes() {
           process: serializeProcess(p.process),
         })),
       }
-      if (clientId && clientWhatsapp.trim()) {
-        await api.updateClient(clientId, { whatsapp: clientWhatsapp.trim() })
+      if (resolvedClientId && clientWhatsapp.trim() && !createdFicha) {
+        await api.updateClient(resolvedClientId, { whatsapp: clientWhatsapp.trim() })
       }
       if (editing) {
         await api.updateWorkOrder(editing.id, payload)
@@ -212,6 +217,9 @@ export default function Ordenes() {
           toast(`${formatOT(created)} creada con ${uploaded} foto${uploaded === 1 ? '' : 's'}`, 'success')
         } else {
           toast(`${formatOT(created)} creada`, 'success')
+        }
+        if (createdFicha) {
+          addPendingFicha({ id: createdFicha.id, name: createdFicha.name })
         }
       }
       setModalOpen(false)
@@ -370,8 +378,8 @@ export default function Ordenes() {
             </div>
           </div>
           <p className="font-semibold text-sm text-slate-800 leading-snug">{order.work_description}</p>
-          {order.pieces?.length > 1 && (
-            <p className="text-xs text-slate-500 mt-1">{order.pieces.length} piezas</p>
+          {(order.piece_count > 1 || (order.pieces?.length || 0) > 1) && (
+            <p className="text-xs text-slate-500 mt-1">{order.piece_count || order.pieces.length} piezas</p>
           )}
           {order.client && <p className="text-sm text-slate-600 mt-1 font-medium">{order.client.name}</p>}
           {order.vehicle_label && (
@@ -390,7 +398,14 @@ export default function Ordenes() {
               <button
                 type="button"
                 onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); setDetailOrder(order) }}
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  try {
+                    setDetailOrder(await api.getWorkOrder(order.id))
+                  } catch (err) {
+                    toast(err.message, 'error')
+                  }
+                }}
                 className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-brand-700 px-1.5 py-2 min-h-[44px] rounded hover:bg-slate-100"
                 title="Ver fotos / detalle"
               >
@@ -570,21 +585,35 @@ export default function Ordenes() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <ClientSearch
             value={clientId}
+            allowCreate={!editing}
             onChange={(id) => {
               setClientId(id)
-              if (!id) setClientWhatsapp('')
+              if (!id) {
+                setClientWhatsapp('')
+                setNewClientName('')
+              }
             }}
             onSelect={(client) => {
               if (!client) {
                 setClientWhatsapp('')
                 return
               }
+              setNewClientName('')
               setClientWhatsapp(client.whatsapp || client.phone || '')
             }}
+            onCreate={(name) => {
+              setNewClientName(name)
+              setClientWhatsapp('')
+            }}
           />
-          {clientId && (
+          {newClientName && !clientId && (
+            <p className="text-xs text-brand-800 -mt-2">
+              Se va a crear la ficha de <b>{newClientName}</b> al guardar la OT. Solo pedimos WhatsApp; el auto y las notas se pueden completar después.
+            </p>
+          )}
+          {(clientId || newClientName) && (
             <div>
-              <label className="label">WhatsApp del cliente</label>
+              <label className="label">{newClientName && !clientId ? 'WhatsApp (obligatorio)' : 'WhatsApp del cliente'}</label>
               <input
                 className="input"
                 inputMode="tel"

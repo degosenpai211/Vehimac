@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, formatPhone } from '../services/api'
 
-export default function ClientSearch({ value, onChange, onSelect }) {
+export default function ClientSearch({ value, onChange, onSelect, onCreate, allowCreate = false }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [open, setOpen] = useState(false)
@@ -50,6 +50,17 @@ export default function ClientSearch({ value, onChange, onSelect }) {
     onSelect?.(client)
   }
 
+  const createFromQuery = () => {
+    const name = query.trim()
+    if (!name) return
+    setSelectedName(name)
+    setQuery(name)
+    setOpen(false)
+    onChange('')
+    onSelect?.(null)
+    onCreate?.(name)
+  }
+
   const clear = () => {
     setQuery('')
     setSelectedName('')
@@ -72,15 +83,15 @@ export default function ClientSearch({ value, onChange, onSelect }) {
         }}
         onFocus={() => setOpen(true)}
       />
-      {value && (
+      {(value || selectedName) && (
         <button type="button" onClick={clear} className="text-xs text-slate-500 mt-1 hover:text-red-600">
           Quitar cliente
         </button>
       )}
       {open && query.trim() && query !== selectedName && (
         <ul className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-          {loading && <li className="p-3 text-sm text-slate-400">Buscando...</li>}
-          {!loading && results.length === 0 && (
+          {loading && <li className="p-2 text-sm text-slate-400">Buscando...</li>}
+          {!loading && results.length === 0 && !allowCreate && (
             <li className="p-3 text-sm text-slate-400">Sin resultados</li>
           )}
           {results.map((c) => (
@@ -95,6 +106,17 @@ export default function ClientSearch({ value, onChange, onSelect }) {
               </button>
             </li>
           ))}
+          {allowCreate && (
+            <li className="border-t border-slate-100">
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 hover:bg-brand-50 text-sm text-brand-800"
+                onClick={createFromQuery}
+              >
+                Crear cliente «{query.trim()}»
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </div>

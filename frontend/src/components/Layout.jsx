@@ -1,8 +1,13 @@
-import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Users, Wrench, DollarSign, Menu, X, UserCog, FileText
 } from 'lucide-react'
+import {
+  dismissPendingFicha,
+  getPendingFichas,
+  subscribePendingFichas,
+} from '../utils/pendingFichas'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Inicio' },
@@ -23,6 +28,17 @@ const bottomItems = [
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [pendingFichas, setPendingFichas] = useState(() => getPendingFichas())
+  const location = useLocation()
+
+  useEffect(() => subscribePendingFichas(setPendingFichas), [])
+
+  const currentFicha = pendingFichas[0]
+  const extraFichas = Math.max(0, pendingFichas.length - 1)
+  const completingId = new URLSearchParams(location.search).get('completar')
+  const hideBanner = !currentFicha || (
+    location.pathname === '/clientes' && String(completingId || '') === String(currentFicha.id)
+  )
 
   return (
     <div className="min-h-screen min-h-[100dvh] flex">
@@ -48,12 +64,13 @@ export default function Layout() {
             <X size={20} />
           </button>
         </div>
-        <nav className="p-3 space-y-1">
+        <nav className="p-3 space-y-1" data-tour="nav-menu">
           {navItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
               end={to === '/'}
+              data-tour={`nav-${to === '/' ? 'inicio' : to.slice(1).replace(/\//g, '-')}`}
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-3 min-h-[44px] rounded-lg text-sm font-medium transition-colors ${
@@ -77,18 +94,48 @@ export default function Layout() {
           </button>
           <span className="font-semibold text-brand-800">Vehimac ERP</span>
         </header>
-        <main className="flex-1 p-4 lg:p-6 overflow-auto pb-[max(5.5rem,calc(4.25rem+env(safe-area-inset-bottom)))] lg:pb-[max(1rem,env(safe-area-inset-bottom))]">
-          <Outlet />
-        </main>
+          {!hideBanner && (
+            <div className="px-4 lg:px-6 pt-4 lg:pt-6 shrink-0">
+              <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <p className="text-sm text-slate-700">
+                  La ficha de <b>{currentFicha.name}</b> todavía está incompleta: solo tiene nombre y WhatsApp.
+                  {extraFichas > 0 && (
+                    <span className="block sm:inline sm:ml-1 text-slate-600">
+                      También hay {extraFichas} ficha{extraFichas === 1 ? '' : 's'} más por completar.
+                    </span>
+                  )}
+                </p>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => dismissPendingFicha(currentFicha.id)}
+                  >
+                    Ahora no
+                  </button>
+                  <Link
+                    to={`/clientes?completar=${currentFicha.id}`}
+                    className="btn-primary btn-sm"
+                  >
+                    Completar ficha
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+          <main className="flex-1 p-4 lg:p-6 overflow-auto pb-[max(5.5rem,calc(4.25rem+env(safe-area-inset-bottom)))] lg:pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <Outlet />
+          </main>
       </div>
 
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)]" data-tour="nav-mobile">
         <div className="grid grid-cols-5">
           {bottomItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
               end={to === '/'}
+              data-tour={`nav-${to === '/' ? 'inicio' : to.slice(1).replace(/\//g, '-')}`}
               className={({ isActive }) =>
                 `flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] text-[11px] font-medium ${
                   isActive ? 'text-brand-700' : 'text-slate-500'
@@ -101,6 +148,7 @@ export default function Layout() {
           ))}
           <button
             type="button"
+            data-tour="nav-mas"
             onClick={() => setSidebarOpen(true)}
             className="flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] text-[11px] font-medium text-slate-500"
           >

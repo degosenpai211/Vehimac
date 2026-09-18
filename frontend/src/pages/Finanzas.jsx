@@ -25,7 +25,7 @@ function typeLabel(type) {
 export default function Finanzas() {
   const [tab, setTab] = useState('resultados')
   const [records, setRecords] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [plasticOpen, setPlasticOpen] = useState(false)
@@ -34,6 +34,7 @@ export default function Finanzas() {
   const { toast } = useToast()
 
   const load = async () => {
+    if (tab !== 'movimientos') return
     setLoading(true)
     try {
       const params = filter ? { type: filter } : {}
@@ -46,7 +47,7 @@ export default function Finanzas() {
     }
   }
 
-  useEffect(() => { load() }, [filter])
+  useEffect(() => { load() }, [filter, tab])
 
   const handleSubmit = async (e) => {
     e.preventDefault()

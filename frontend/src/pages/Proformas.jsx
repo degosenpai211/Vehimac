@@ -11,6 +11,7 @@ import ProformaTrashIcon from '../components/ProformaTrashIcon'
 import { useToast } from '../components/Toast'
 import { api, formatDate, whatsappUrl } from '../services/api'
 import { sendProformaPdfToClient } from '../services/proformaPdf'
+import { addPendingFicha } from '../utils/pendingFichas'
 
 const emptyLine = () => ({
   description: '',
@@ -173,11 +174,13 @@ export default function Proformas() {
     try {
       const created = await api.acceptProforma(p.id)
       load()
-      setFichaHint({
+      const hint = {
         clientId: created.client_id,
         name: created.client?.name || name,
         otNumber: null,
-      })
+      }
+      addPendingFicha({ id: hint.clientId, name: hint.name })
+      setFichaHint(hint)
     } catch (err) {
       toast(err.message, 'error')
     }
@@ -197,11 +200,13 @@ export default function Proformas() {
       setConvertTarget(null)
       load()
       if (wasProspect) {
-        setFichaHint({
+        const hint = {
           clientId: res.proforma?.client_id || res.order?.client_id,
           name: res.proforma?.client?.name || prospectNameHint,
           otNumber: otLabel,
-        })
+        }
+        addPendingFicha({ id: hint.clientId, name: hint.name })
+        setFichaHint(hint)
       } else {
         toast(`Convertida a ${otLabel}`, 'success')
         navigate('/ordenes')

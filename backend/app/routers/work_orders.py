@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from decimal import Decimal
 
-from app.database import fetch_in, get_supabase
+from app.database import fetch_in, get_supabase, in_parallel
 from app.schemas.work_order import (
     BillingType,
     OrderItemCreate,
@@ -24,6 +24,58 @@ router = APIRouter(prefix="/work-orders", tags=["Órdenes de trabajo"])
 def _sanitize_search(term: str) -> str:
     cleaned = term.replace(",", " ").replace("(", " ").replace(")", " ").replace("%", "").replace("_", " ")
     return " ".join(cleaned.split())
+
+
+def _apply_order_filters(
+    db,
+    query,
+    *,
+    search: str | None = None,
+    client_id=None,
+    status: str | None = None,
+    entry_from: str | None = None,
+    entry_to: str | None = None,
+    delivery_from: str | None = None,
+    delivery_to: str | None = None,
+):
+    if status:
+        query = query.eq("status", status)
+    if client_id:
+        query = query.eq("client_id", str(client_id))
+    if search:
+        q = search.strip()
+        if q.upper().startswith("OT") and q[2:].isdigit():
+            query = query.eq("ot_number", int(q[2:]))
+        else:
+            safe = _sanitize_search(q)
+            if safe:
+                or_parts = [
+                    f"work_description.ilike.%{safe}%",
+                    f"part_description.ilike.%{safe}%",
+                ]
+                try:
+                    clients = (
+                        db.table("clients")
+                        .select("id")
+                        .ilike("name", f"%{safe}%")
+                        .limit(100)
+                        .execute()
+                    )
+                    client_ids = [str(c["id"]) for c in (clients.data or [])]
+                    if client_ids:
+                        or_parts.append(f"client_id.in.({','.join(client_ids)})")
+                except Exception:
+                    pass
+                query = query.or_(",".join(or_parts))
+    if entry_from:
+        query = query.gte("entry_date", entry_from)
+    if entry_to:
+        query = query.lte("entry_date", entry_to)
+    if delivery_from:
+        query = query.gte("estimated_delivery_date", delivery_from)
+    if delivery_to:
+        query = query.lte("estimated_delivery_date", delivery_to)
+    return query
 
 
 def _summary_from_pieces(pieces: list) -> dict:
@@ -64,6 +116,27 @@ def _attach_pieces_many(db, orders: list[dict]) -> list[dict]:
         items.sort(key=lambda x: x.get("sort_order") or 0)
     for order in orders:
         order["pieces"] = by_order.get(order["id"], [])
+    return orders
+
+
+def _attach_kanban_meta(db, orders: list[dict]) -> list[dict]:
+    """Solo conteo de piezas y si el proceso está confirmado — sin JSONB completo."""
+    if not orders:
+        return orders
+    ids = [o["id"] for o in orders]
+    items = fetch_in(db, "order_items", "work_order_id", ids, "work_order_id, process")
+    by_order: dict = {oid: [] for oid in ids}
+    for item in items:
+        by_order.setdefault(item["work_order_id"], []).append(item)
+    for order in orders:
+        pieces = by_order.get(order["id"], [])
+        order["piece_count"] = len(pieces)
+        order["process_done"] = bool(pieces) and all(
+            isinstance(p.get("process"), dict) and p["process"].get("confirmed")
+            for p in pieces
+        )
+        order["pieces"] = []
+        order.setdefault("photo_count", 0)
     return orders
 
 
@@ -232,44 +305,17 @@ def list_work_orders(
 ):
     db = get_supabase()
     query = db.table("work_orders").select("*, clients(id, name, phone, whatsapp)")
-
-    if status:
-        query = query.eq("status", status.value)
-    if client_id:
-        query = query.eq("client_id", str(client_id))
-    if search:
-        q = search.strip()
-        if q.upper().startswith("OT") and q[2:].isdigit():
-            query = query.eq("ot_number", int(q[2:]))
-        else:
-            safe = _sanitize_search(q)
-            if safe:
-                or_parts = [
-                    f"work_description.ilike.%{safe}%",
-                    f"part_description.ilike.%{safe}%",
-                ]
-                try:
-                    clients = (
-                        db.table("clients")
-                        .select("id")
-                        .ilike("name", f"%{safe}%")
-                        .limit(100)
-                        .execute()
-                    )
-                    client_ids = [str(c["id"]) for c in (clients.data or [])]
-                    if client_ids:
-                        or_parts.append(f"client_id.in.({','.join(client_ids)})")
-                except Exception:
-                    pass
-                query = query.or_(",".join(or_parts))
-    if entry_from:
-        query = query.gte("entry_date", entry_from)
-    if entry_to:
-        query = query.lte("entry_date", entry_to)
-    if delivery_from:
-        query = query.gte("estimated_delivery_date", delivery_from)
-    if delivery_to:
-        query = query.lte("estimated_delivery_date", delivery_to)
+    query = _apply_order_filters(
+        db,
+        query,
+        search=search,
+        client_id=client_id,
+        status=status.value if status else None,
+        entry_from=entry_from,
+        entry_to=entry_to,
+        delivery_from=delivery_from,
+        delivery_to=delivery_to,
+    )
 
     desc = sort_dir.lower() != "asc"
     sort_col = sort_by if sort_by in ("created_at", "updated_at", "entry_date", "estimated_delivery_date", "price_charged", "ot_number") else "created_at"
@@ -289,22 +335,35 @@ def list_work_orders(
 
 
 @router.get("/kanban")
-def get_kanban_board(period: str | None = Query(None, description="today | week | overdue | all | due_today | tomorrow | day_after | next_week")):
+def get_kanban_board(
+    period: str | None = Query(None, description="today | week | overdue | all | due_today | tomorrow | day_after | next_week"),
+    search: str | None = Query(None),
+    entry_from: str | None = Query(None),
+    entry_to: str | None = Query(None),
+    delivery_from: str | None = Query(None),
+    delivery_to: str | None = Query(None),
+):
     db = get_supabase()
-    result = (
-        db.table("work_orders")
-        .select("*, clients(id, name, phone, whatsapp)")
-        .order("ot_number", desc=True)
-        .execute()
+    query = db.table("work_orders").select("*, clients(id, name, phone, whatsapp)").order("ot_number", desc=True)
+    query = _apply_order_filters(
+        db,
+        query,
+        search=search,
+        entry_from=entry_from,
+        entry_to=entry_to,
+        delivery_from=delivery_from,
+        delivery_to=delivery_to,
     )
+    result = query.execute()
     prepared = [_enrich_order(raw) for raw in (result.data or [])]
-    _attach_pieces_many(db, prepared)
-    _attach_vehicles(db, prepared)
-    board = {"en_proceso": [], "terminado": [], "entregado": []}
     filtered = [o for o in prepared if _matches_period(o, period)]
-    counts = photo_counts_by_order(db, [o["id"] for o in filtered])
+    if filtered:
+        in_parallel(
+            lambda: _attach_kanban_meta(db, filtered),
+            lambda: _attach_vehicles(db, filtered),
+        )
+    board = {"en_proceso": [], "terminado": [], "entregado": []}
     for order in filtered:
-        order["photo_count"] = counts.get(order["id"], 0)
         status = order.get("status", "en_proceso")
         if status == "finalizado":
             status = "entregado"

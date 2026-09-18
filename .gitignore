@@ -16,3 +16,6 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Tour de prueba (solo esta máquina)
+frontend/src/tours/

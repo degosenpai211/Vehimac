@@ -7,6 +7,7 @@ import EmptyState from '../components/EmptyState'
 import { useToast } from '../components/Toast'
 import { api, formatCurrency, formatDate, formatDateTime, formatPhone, whatsappUrl, formatOT } from '../services/api'
 import { ORDER_STATUS } from '../utils/status'
+import { dismissPendingFicha } from '../utils/pendingFichas'
 
 const emptyAuto = () => ({ make: '', model: '', year: '' })
 
@@ -51,21 +52,27 @@ export default function Clientes() {
 
   useEffect(() => { load() }, [searchDebounced, sortBy, sortDir, hasStored])
 
+  const completarId = params.get('completar')
+
+  const clearCompletar = () => {
+    if (!params.get('completar')) return
+    const next = new URLSearchParams(params)
+    next.delete('completar')
+    setParams(next, { replace: true })
+  }
+
   useEffect(() => {
-    const id = params.get('completar')
-    if (!id) return
+    if (!completarId) return
     let cancelled = false
-    api.getClient(id)
+    api.getClient(completarId)
       .then((c) => {
         if (cancelled) return
         setFromProspect(true)
         openEdit(c)
-        params.delete('completar')
-        setParams(params, { replace: true })
       })
       .catch((err) => toast(err.message, 'error'))
     return () => { cancelled = true }
-  }, [])
+  }, [completarId])
 
   const openCreate = () => {
     setEditing(null)
@@ -136,6 +143,7 @@ export default function Clientes() {
         for (const a of autos) {
           await api.addAuto(editing.id, a)
         }
+        dismissPendingFicha(editing.id)
         toast(fromProspect ? 'Ficha completada' : 'Cliente actualizado', 'success')
       } else {
         await api.createClient({ ...data, autos })
@@ -143,6 +151,7 @@ export default function Clientes() {
       }
       setModalOpen(false)
       setFromProspect(false)
+      clearCompletar()
       load()
     } catch (err) {
       toast(err.message, 'error')
@@ -155,6 +164,7 @@ export default function Clientes() {
     if (!confirm('¿Eliminar este cliente?')) return
     try {
       await api.deleteClient(id)
+      dismissPendingFicha(id)
       toast('Cliente eliminado', 'success')
       load()
     } catch (err) {
@@ -237,6 +247,7 @@ export default function Clientes() {
         onClose={() => {
           setModalOpen(false)
           setFromProspect(false)
+          clearCompletar()
         }}
         title={editing ? (fromProspect ? 'Completar ficha' : 'Editar cliente') : 'Nuevo cliente'}
         size="lg"
@@ -244,7 +255,7 @@ export default function Clientes() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {fromProspect && (
             <p className="text-sm bg-amber-50 text-amber-900 border border-amber-200 rounded-lg p-3">
-              Esta ficha nació de una proforma: solo tiene nombre y WhatsApp. Cargá el auto (marca, modelo, año) y una nota si hace falta. Las piezas van en la OT.
+              Esta ficha todavía está incompleta: solo tiene nombre y WhatsApp. Cargá el auto (marca, modelo, año) y una nota si hace falta. Las piezas van en la OT.
             </p>
           )}
           <div>
