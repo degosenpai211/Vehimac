@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Users, Wrench, DollarSign, Menu, X, UserCog, FileText
 } from 'lucide-react'
@@ -30,8 +30,14 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [pendingFichas, setPendingFichas] = useState(() => getPendingFichas())
   const location = useLocation()
+  const navigate = useNavigate()
 
   useEffect(() => subscribePendingFichas(setPendingFichas), [])
+
+  useEffect(() => {
+    window.__vehimacTourGo = (path) => navigate(path)
+    return () => { delete window.__vehimacTourGo }
+  }, [navigate])
 
   const currentFicha = pendingFichas[0]
   const extraFichas = Math.max(0, pendingFichas.length - 1)

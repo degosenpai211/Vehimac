@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
-  Users, Wrench, Package, Clock, AlertTriangle, Bell, Share,
+  Users, Wrench, Package, Clock, AlertTriangle, Bell, Share, Map,
   Banknote, TrendingUp, CircleDollarSign, Timer,
 } from 'lucide-react'
 import StatCard from '../components/StatCard'
@@ -11,6 +11,7 @@ import Loading from '../components/Loading'
 import { useToast } from '../components/Toast'
 import { api, formatCurrency, formatDate, formatOT } from '../services/api'
 import { ORDER_STATUS } from '../utils/status'
+import { startAppTour } from '../tours/appTour'
 import {
   isIosDevice,
   isStandalonePwa,
@@ -152,6 +153,7 @@ export default function Dashboard() {
   const [trends, setTrends] = useState(null)
   const [loading, setLoading] = useState(true)
   const [notifyState, setNotifyState] = useState(notificationPermission())
+  const [searchParams] = useSearchParams()
   const { toast } = useToast()
   const ios = isIosDevice()
   const standalone = isStandalonePwa()
@@ -174,14 +176,28 @@ export default function Dashboard() {
     })
   }, [stats])
 
+  useEffect(() => {
+    if (loading || !stats) return
+    if (searchParams.get('tour') !== '1') return
+    const id = window.setTimeout(() => startAppTour(), 400)
+    return () => window.clearTimeout(id)
+  }, [loading, stats, searchParams])
+
   if (loading) return <Loading />
   if (!stats) return <p className="text-red-600">Error al cargar estadísticas</p>
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Inicio</h1>
-        <p className="text-slate-500 text-sm mt-1">Taller al día: alarmas, caja y entregas</p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3" data-tour="inicio-title">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Inicio</h1>
+          <p className="text-slate-500 text-sm mt-1">Taller al día: alarmas, caja y entregas</p>
+        </div>
+        {import.meta.env.DEV && (
+          <button type="button" className="btn-secondary btn-sm shrink-0" onClick={() => startAppTour()}>
+            <Map size={16} /> Probar tour
+          </button>
+        )}
       </div>
 
       {ios && !standalone && (
@@ -203,36 +219,42 @@ export default function Dashboard() {
         </div>
       )}
 
-      {notificationsSupported() && notifyState !== 'granted' && (
-        <div className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-          <div className="text-sm text-slate-600">
-            <p className="font-medium text-slate-800">Avisos de entrega</p>
-            <p>
-              {ios && !standalone
-                ? 'Primero agregala al inicio; después activá los avisos desde la app.'
-                : 'Activá avisos del celular para enterarte al abrir la app si hay entregas hoy o mañana.'}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn-secondary min-h-[44px]"
-            onClick={async () => {
-              const perm = await requestNotificationPermission()
-              setNotifyState(perm)
-              if (perm === 'granted' && stats?.delivery_agenda) {
-                notifyDeliveries({
-                  dueToday: stats.delivery_agenda.due_today || [],
-                  dueTomorrow: stats.delivery_agenda.due_tomorrow || [],
-                })
-              }
-            }}
-          >
-            <Bell size={16} /> Activar avisos
-          </button>
+      {notificationsSupported() && (
+        <div data-tour="activar-avisos">
+          {notifyState !== 'granted' ? (
+            <div className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+              <div className="text-sm text-slate-600">
+                <p className="font-medium text-slate-800">Avisos de entrega</p>
+                <p>
+                  {ios && !standalone
+                    ? 'Primero agregala al inicio; después activá los avisos desde la app.'
+                    : 'Activá avisos del celular para enterarte al abrir la app si hay entregas hoy o mañana.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary min-h-[44px]"
+                onClick={async () => {
+                  const perm = await requestNotificationPermission()
+                  setNotifyState(perm)
+                  if (perm === 'granted' && stats?.delivery_agenda) {
+                    notifyDeliveries({
+                      dueToday: stats.delivery_agenda.due_today || [],
+                      dueTomorrow: stats.delivery_agenda.due_tomorrow || [],
+                    })
+                  }
+                }}
+              >
+                <Bell size={16} /> Activar avisos
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">Los avisos del celular ya están activos: las entregas de hoy y mañana llegan como notificación.</p>
+          )}
         </div>
       )}
 
-      <div className="card p-4 space-y-3">
+      <div className="card p-4 space-y-3" data-tour="alarmas">
         <div className="flex items-center justify-between gap-2">
           <div>
             <h2 className="font-semibold">Alarmas</h2>

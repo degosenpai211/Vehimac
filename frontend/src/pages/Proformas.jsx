@@ -262,7 +262,7 @@ export default function Proformas() {
           <h1 className="text-2xl font-bold">Proformas</h1>
           <p className="text-sm text-slate-500">Cotización en PDF por WhatsApp. El interesado no entra a Clientes hasta que acepte o lo pases a OT. Si no acepta, se borra todo a los 7 días o con No aceptó.</p>
         </div>
-        <button onClick={openCreate} className="btn-primary">
+        <button onClick={openCreate} data-tour="nueva-proforma" className="btn-primary">
           <Plus size={18} /> Crear proforma
         </button>
       </div>
@@ -283,7 +283,7 @@ export default function Proformas() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((p) => {
+              {rows.map((p, idx) => {
                 const st = STATUS[p.status] || STATUS.pendiente
                 const contact = proformaContact(p)
                 const prospect = isProspect(p)
@@ -298,6 +298,7 @@ export default function Proformas() {
                           <button
                             type="button"
                             title="Ver y enviar proforma"
+                            data-tour={idx === 0 ? 'proforma-whatsapp' : undefined}
                             onClick={() => openPreview(p)}
                             className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-green-50 text-green-700 hover:bg-green-100 shrink-0"
                           >
@@ -472,7 +473,7 @@ export default function Proformas() {
       <Modal open={!!preview} onClose={() => setPreview(null)} title={`Proforma Nº ${preview?.number || ''}`} size="sheet">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <p className="text-sm text-slate-600 truncate">{preview ? (proformaContact(preview).name || 'Sin nombre') : ''}</p>
-          <button type="button" className="btn min-h-[44px] bg-green-600 text-white hover:bg-green-700" disabled={pdfBusy || !whatsappUrl(preview ? proformaContact(preview).phone : '')} onClick={sendPdfToClient}>
+          <button type="button" data-tour="proforma-enviar-wa" className="btn min-h-[44px] bg-green-600 text-white hover:bg-green-700" disabled={pdfBusy || !whatsappUrl(preview ? proformaContact(preview).phone : '')} onClick={sendPdfToClient}>
             <MessageCircle size={16} /> {pdfBusy ? 'Preparando...' : 'Enviar por WhatsApp'}
           </button>
         </div>

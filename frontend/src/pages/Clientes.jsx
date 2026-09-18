@@ -185,7 +185,7 @@ export default function Clientes() {
           <h1 className="text-2xl font-bold">Clientes</h1>
           <p className="text-sm text-slate-500">Nombre, contacto y autos</p>
         </div>
-        <button onClick={openCreate} className="btn-primary"><Plus size={18} /> Nuevo cliente</button>
+        <button onClick={openCreate} data-tour="nuevo-cliente" className="btn-primary"><Plus size={18} /> Nuevo cliente</button>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -213,7 +213,7 @@ export default function Clientes() {
         <EmptyState message="No hay clientes" action={<button onClick={openCreate} className="btn-primary">Agregar cliente</button>} />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {clients.map((c) => {
+          {clients.map((c, idx) => {
             const wa = whatsappUrl(c.whatsapp || c.phone)
             const autos = c.autos || c.vehicles || []
             return (
@@ -222,7 +222,7 @@ export default function Clientes() {
                   <h3 className="font-semibold">{c.name}</h3>
                   <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                     {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-green-50 text-green-600"><MessageCircle size={15} /></a>}
-                    <button onClick={() => openEdit(c)} className="p-1 rounded hover:bg-slate-100"><Pencil size={15} /></button>
+                    <button data-tour={idx === 0 ? 'cliente-editar' : undefined} onClick={() => openEdit(c)} className="p-1 rounded hover:bg-slate-100"><Pencil size={15} /></button>
                     <button onClick={() => handleDelete(c.id)} className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 size={15} /></button>
                   </div>
                 </div>

@@ -11,7 +11,7 @@ export default function Modal({ open, onClose, title, children, size = 'md' }) {
       <div className={`relative bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full ${sizes[size]} max-h-[min(90vh,90dvh)] flex flex-col pb-[env(safe-area-inset-bottom)]`}>
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <h2 className="text-lg font-semibold">{title}</h2>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 min-h-[44px] min-w-[44px] inline-flex items-center justify-center">
+          <button onClick={onClose} data-tour="modal-close" className="p-1 rounded-lg hover:bg-slate-100 min-h-[44px] min-w-[44px] inline-flex items-center justify-center">
             <X size={20} />
           </button>
         </div>

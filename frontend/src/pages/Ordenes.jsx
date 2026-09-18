@@ -447,7 +447,7 @@ export default function Ordenes() {
           <p className="text-sm text-slate-500">En proceso → Terminado → Entregado</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={openCreate} className="btn-primary">
+          <button onClick={openCreate} data-tour="nueva-orden" className="btn-primary">
             <Plus size={18} /> Nueva orden
           </button>
           <Link to="/proformas?nueva=1" className="btn-secondary">
@@ -582,7 +582,8 @@ export default function Ordenes() {
         title={editing ? `${formatOT(editing)} — Editar` : 'Nueva orden'}
         size="xl"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" data-tour="ot-form">
+          <div data-tour="ot-cliente">
           <ClientSearch
             value={clientId}
             allowCreate={!editing}
@@ -606,6 +607,7 @@ export default function Ordenes() {
               setClientWhatsapp('')
             }}
           />
+          </div>
           {newClientName && !clientId && (
             <p className="text-xs text-brand-800 -mt-2">
               Se va a crear la ficha de <b>{newClientName}</b> al guardar la OT. Solo pedimos WhatsApp; el auto y las notas se pueden completar después.
@@ -632,7 +634,7 @@ export default function Ordenes() {
             <input type="date" className="input" value={estimatedDelivery} onChange={(e) => setEstimatedDelivery(e.target.value)} />
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3" data-tour="ot-piezas">
             <div className="flex items-center justify-between">
               <label className="label mb-0">Piezas / trabajos</label>
               <button type="button" onClick={addPiece} className="btn-secondary btn-sm">
