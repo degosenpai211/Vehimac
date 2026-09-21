@@ -23,7 +23,14 @@ from app.services.pl import (
     period_label,
     week_bounds,
 )
-from app.services.salary import jobs_for_worker, period_status, pick_period, recent_periods
+from app.services.salary import (
+    as_start_date,
+    jobs_for_worker,
+    period_status,
+    periods_since,
+    pick_period,
+    recent_periods,
+)
 
 router = APIRouter(prefix="/finances", tags=["Finanzas"])
 
@@ -238,7 +245,10 @@ def salary_board():
         period_type = m.get("salary_period") or "monthly"
         pay_day = m.get("pay_day")
         base = float(m.get("salary_base") or 0)
-        periods = recent_periods(today, period_type, pay_day)
+        periods = periods_since(
+            recent_periods(today, period_type, pay_day),
+            as_start_date(m.get("created_at")),
+        )
         mine = pays_by_mechanic.get(mid, [])
         sums = {}
         last = None
@@ -255,7 +265,7 @@ def salary_board():
             return amount + 0.009 >= base
 
         paid_keys = {k for k, v in sums.items() if settled(v)}
-        current = pick_period(periods, paid_keys, today)
+        current = pick_period(periods, today)
         paid_sum = sums.get(current["key"], 0)
         status = period_status(current, paid_sum, base, mode, today)
         if mode != "per_job" and base <= 0:
@@ -273,6 +283,13 @@ def salary_board():
                 current["start"],
                 current["deadline"],
             )
+        unpaid_previous = sum(
+            1
+            for period in periods
+            if period["key"] != current["key"]
+            and today >= period["payday"]
+            and period["key"] not in paid_keys
+        )
         workers.append({
             "id": m["id"],
             "name": m.get("name"),
@@ -288,6 +305,15 @@ def salary_board():
             "legal_window": bool(current.get("legal_window")),
             "status": status,
             "paid_sum": paid_sum,
+            "unpaid_previous": unpaid_previous,
+            "periods": [
+                {
+                    "key": period["key"],
+                    "label": period["label"],
+                    "payday": period["payday"].isoformat(),
+                }
+                for period in periods
+            ],
             "last_paid_at": (last or {}).get("date"),
             "last_paid_amount": float((last or {}).get("amount") or 0) if last else 0,
             "jobs": jobs,

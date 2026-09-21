@@ -121,13 +121,30 @@ def _recent_biweekly(today: date) -> list[dict]:
     return out
 
 
-def pick_period(periods: list[dict], paid_keys: set[str], today: date) -> dict:
-    due_unpaid = [p for p in periods if today >= p["payday"] and p["key"] not in paid_keys]
-    if due_unpaid:
-        return due_unpaid[0]
-    upcoming = [p for p in periods if today < p["payday"]]
-    if upcoming:
-        return min(upcoming, key=lambda p: p["payday"])
+def as_start_date(value) -> date | None:
+    raw = str(value or "")[:10]
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def periods_since(periods: list[dict], started: date | None) -> list[dict]:
+    if started is None or not periods:
+        return periods
+    month_start = date(started.year, started.month, 1)
+    filtered = [period for period in periods if period["start"] >= month_start]
+    return filtered or periods[:1]
+
+
+def pick_period(periods: list[dict], today: date) -> dict:
+    if not periods:
+        raise ValueError("Sin períodos de salario")
+    for period in periods:
+        if period["start"] <= today:
+            return period
     return periods[0]
 
 

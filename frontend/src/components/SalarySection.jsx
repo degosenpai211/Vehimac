@@ -25,6 +25,7 @@ function emptyPay(worker) {
     base: showBase ? String(worker.salary_base || '') : '',
     extra: showExtra ? '' : '',
     date: new Date().toISOString().slice(0, 10),
+    period_key: worker.period_key || '',
   }
 }
 
@@ -99,7 +100,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
     try {
       await api.paySalary({
         mechanic_id: pay.id,
-        period_key: pay.period_key,
+        period_key: payForm.period_key || pay.period_key,
         base_amount: base,
         extra_amount: extra,
         date: payForm.date || null,
@@ -173,6 +174,12 @@ export default function SalarySection({ onPaid, embedded = false }) {
                     <p>Pagar hasta {formatDate(w.deadline)} (5 días hábiles)</p>
                   )}
                   {w.paid_sum > 0 && <p>Pagado en este período: {formatCurrency(w.paid_sum)}</p>}
+                  {w.unpaid_previous > 0 && (
+                    <p>
+                      Hay {w.unpaid_previous} período{w.unpaid_previous === 1 ? '' : 's'} anterior{w.unpaid_previous === 1 ? '' : 'es'} sin registrar.
+                      Al pagar podés elegir cuál.
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <button type="button" className="btn-secondary btn-sm flex-1 sm:flex-none min-h-[44px] sm:min-h-0" onClick={() => openConfig(w)}>
@@ -271,7 +278,18 @@ export default function SalarySection({ onPaid, embedded = false }) {
       <Modal open={!!pay} onClose={() => setPay(null)} title={pay ? `Pagar · ${pay.name}` : 'Pagar'} size="lg">
         {pay && (
           <form onSubmit={submitPay} className="space-y-3">
-            <p className="text-sm text-slate-600">{pay.period_label}</p>
+            <div>
+              <label className="label">Período</label>
+              <select
+                className="input"
+                value={payForm.period_key}
+                onChange={(e) => setPayForm({ ...payForm, period_key: e.target.value })}
+              >
+                {(pay.periods || [{ key: pay.period_key, label: pay.period_label }]).map((p) => (
+                  <option key={p.key} value={p.key}>{p.label}</option>
+                ))}
+              </select>
+            </div>
             {pay.salary_mode !== 'per_job' && (
               <div>
                 <label className="label">Sueldo base</label>
