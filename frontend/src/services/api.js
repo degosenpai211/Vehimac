@@ -248,3 +248,12 @@ export function orderPayable(order) {
   if (order.total_amount != null && Number(order.total_amount) > 0) return Number(order.total_amount)
   return computeBilling(order.price_charged, order.billing_type).total
 }
+
+export function orderRemaining(order) {
+  if (!order) return 0
+  const advance = order.advance_recorded ? Number(order.advance_amount) || 0 : 0
+  const qrPaid = order.qr_paid ? Number(order.qr_paid_amount) || 0 : 0
+  const leftover = orderPayable(order) - advance - qrPaid
+  if (leftover <= 0) return 0
+  return Math.round(leftover * 100) / 100
+}

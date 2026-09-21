@@ -4,7 +4,7 @@ import Modal from './Modal'
 import PhotoLightbox from './PhotoLightbox'
 import { useToast } from './Toast'
 import PieceProcessFields from './PieceProcessFields'
-import { api, formatCurrency, formatDate, formatOT, openWhatsApp, whatsappUrl } from '../services/api'
+import { api, formatCurrency, formatDate, formatOT, openWhatsApp, orderPayable, orderRemaining, whatsappUrl } from '../services/api'
 
 export default function OrderDetailModal({ order, open, onClose, onCountChange }) {
   const [photos, setPhotos] = useState([])
@@ -36,6 +36,9 @@ export default function OrderDetailModal({ order, open, onClose, onCountChange }
 
   if (!order) return null
 
+  const payable = orderPayable(order)
+  const leftover = orderRemaining(order)
+
   return (
     <>
       <Modal open={open} onClose={onClose} title={`${formatOT(order)} — Detalle`} size="lg">
@@ -65,7 +68,10 @@ export default function OrderDetailModal({ order, open, onClose, onCountChange }
                 )}
               </div>
             )}
-            <p className="text-sm font-bold mt-1">{formatCurrency(order.total_amount || order.price_charged)}</p>
+            <p className="text-sm font-bold mt-1">{formatCurrency(payable)}</p>
+            {leftover > 0 && leftover < payable && (
+              <p className="text-xs font-medium text-amber-700">Falta {formatCurrency(leftover)}</p>
+            )}
             <p className="text-xs text-slate-400 mt-1">Inicio: {formatDate(order.entry_date)}</p>
             {order.estimated_delivery_date && (
               <p className="text-xs text-slate-400">Entrega cliente: {formatDate(order.estimated_delivery_date)}</p>

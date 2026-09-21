@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, formatCurrency } from '../services/api'
+import { api, formatCurrency, orderRemaining } from '../services/api'
 
 const QR_KEY = 'vehimac_qr_next'
 
@@ -17,13 +17,6 @@ function bumpIndex() {
   localStorage.setItem(QR_KEY, String((current + 1) % QR_BANKS.length))
 }
 
-function remaining(order) {
-  const total = Number(order.total_amount) || Number(order.price_charged) || 0
-  const advance = order.advance_recorded ? Number(order.advance_amount) || 0 : 0
-  const qr = order.qr_paid ? Number(order.qr_paid_amount) || 0 : 0
-  return Math.max(0, Math.round((total - advance - qr) * 100) / 100)
-}
-
 export default function PaymentQrModal({ open, order, onClose, onPaid }) {
   const [bank, setBank] = useState(null)
   const [amount, setAmount] = useState('')
@@ -33,7 +26,7 @@ export default function PaymentQrModal({ open, order, onClose, onPaid }) {
   useEffect(() => {
     if (open && order) {
       setBank(QR_BANKS[nextIndex()])
-      setAmount(String(remaining(order) || ''))
+      setAmount(String(orderRemaining(order) || ''))
       setError('')
     }
   }, [open, order])
@@ -41,7 +34,7 @@ export default function PaymentQrModal({ open, order, onClose, onPaid }) {
   if (!open || !order || !bank) return null
 
   const alreadyPaid = !!order.qr_paid
-  const left = remaining(order)
+  const left = orderRemaining(order)
 
   const handleClose = () => {
     bumpIndex()

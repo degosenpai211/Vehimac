@@ -18,6 +18,16 @@ const STATUS = {
   sin_config: { label: 'Sin sueldo', cls: 'bg-slate-100 text-slate-500' },
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function defaultWorkStart(worker) {
+  const raw = worker.work_started_on || worker.created_at || ''
+  if (raw) return String(raw).slice(0, 10)
+  return todayIso()
+}
+
 function emptyPay(worker) {
   const showBase = worker.salary_mode !== 'per_job'
   const showExtra = worker.salary_mode !== 'fixed'
@@ -60,6 +70,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
       salary_mode: isAdmin ? 'fixed' : (w.salary_mode || 'both'),
       salary_period: w.salary_period || 'monthly',
       pay_day: String(w.pay_day ?? (w.salary_period === 'weekly' ? 4 : 30)),
+      work_started_on: defaultWorkStart(w),
     })
   }
 
@@ -72,6 +83,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
         salary_mode: config.role === 'admin' ? 'fixed' : form.salary_mode,
         salary_period: form.salary_period,
         pay_day: Number(form.pay_day) || (form.salary_period === 'weekly' ? 4 : 30),
+        work_started_on: form.work_started_on || null,
       })
       toast('Sueldo actualizado', 'success')
       setConfig(null)
@@ -170,6 +182,9 @@ export default function SalarySection({ onPaid, embedded = false }) {
                 </div>
                 <div className="text-xs text-slate-500 space-y-0.5">
                   <p>{w.period_label} · día de pago {formatDate(w.payday)}</p>
+                  {w.work_started_on && (
+                    <p>Trabaja desde {formatDate(w.work_started_on)}</p>
+                  )}
                   {w.legal_window && w.status !== 'pagado' && w.status !== 'sin_config' && (
                     <p>Pagar hasta {formatDate(w.deadline)} (5 días hábiles)</p>
                   )}
@@ -227,6 +242,28 @@ export default function SalarySection({ onPaid, embedded = false }) {
                 <option value="monthly">Mensual</option>
               </select>
             </div>
+            <div>
+              <label className="label">Día que empezó a trabajar</label>
+              <div className="flex gap-2">
+                <input
+                  className="input"
+                  type="date"
+                  value={form.work_started_on || ''}
+                  onChange={(e) => setForm({ ...form, work_started_on: e.target.value })}
+                  required
+                />
+                <button
+                  type="button"
+                  className="btn-secondary shrink-0"
+                  onClick={() => setForm({ ...form, work_started_on: todayIso() })}
+                >
+                  Hoy
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Desde esa fecha hasta que complete la semana, quincena o mes. Si se retrasa, vuelve de vacaciones o pide permiso, cambiá el día.
+              </p>
+            </div>
             {form.salary_mode !== 'per_job' && (
               <div>
                 <label className="label">Sueldo acordado (Bs.)</label>
@@ -240,7 +277,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
                 />
               </div>
             )}
-            {form.salary_period === 'monthly' && (
+            {form.salary_period === 'monthly' && !form.work_started_on && (
               <div>
                 <label className="label">Día de pago del mes</label>
                 <input
@@ -254,7 +291,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
                 <p className="text-xs text-slate-400 mt-1">Después de ese día hay 5 días hábiles de plazo.</p>
               </div>
             )}
-            {form.salary_period === 'weekly' && (
+            {form.salary_period === 'weekly' && !form.work_started_on && (
               <div>
                 <label className="label">Día de pago</label>
                 <select className="input" value={form.pay_day} onChange={(e) => setForm({ ...form, pay_day: e.target.value })}>
@@ -264,7 +301,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
                 </select>
               </div>
             )}
-            {form.salary_period === 'biweekly' && (
+            {form.salary_period === 'biweekly' && !form.work_started_on && (
               <p className="text-xs text-slate-500">Quincena: el 15 y el último día del mes.</p>
             )}
             <div className="flex justify-end gap-2">

@@ -24,6 +24,7 @@ from app.services.pl import (
     week_bounds,
 )
 from app.services.salary import (
+    PeriodConfig,
     as_start_date,
     jobs_for_worker,
     period_status,
@@ -245,10 +246,13 @@ def salary_board():
         period_type = m.get("salary_period") or "monthly"
         pay_day = m.get("pay_day")
         base = float(m.get("salary_base") or 0)
-        periods = periods_since(
-            recent_periods(today, period_type, pay_day),
-            as_start_date(m.get("created_at")),
+        work_started = as_start_date(m.get("work_started_on"))
+        periods = recent_periods(
+            today,
+            PeriodConfig(kind=period_type, pay_day=pay_day, started=work_started),
         )
+        if work_started is None:
+            periods = periods_since(periods, as_start_date(m.get("created_at")))
         mine = pays_by_mechanic.get(mid, [])
         sums = {}
         last = None
@@ -281,7 +285,7 @@ def salary_board():
                 orders_by_id,
                 m.get("name") or "",
                 current["start"],
-                current["deadline"],
+                current.get("end") or current["deadline"],
             )
         unpaid_previous = sum(
             1
@@ -298,6 +302,8 @@ def salary_board():
             "salary_mode": mode,
             "salary_period": period_type,
             "pay_day": pay_day,
+            "work_started_on": str(m.get("work_started_on") or "")[:10] or None,
+            "created_at": str(m.get("created_at") or "")[:10] or None,
             "period_key": current["key"],
             "period_label": current["label"],
             "payday": current["payday"].isoformat(),

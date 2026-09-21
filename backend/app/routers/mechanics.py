@@ -93,7 +93,12 @@ def update_mechanic(mechanic_id: UUID, body: MechanicUpdate):
     try:
         result = db.table("mechanics").update(data).eq("id", str(mechanic_id)).execute()
     except Exception:
-        salary_keys = {"salary_base", "salary_mode", "salary_period", "pay_day"}
+        salary_keys = {"salary_base", "salary_mode", "salary_period", "pay_day", "work_started_on"}
+        if "work_started_on" in data:
+            raise HTTPException(
+                status_code=400,
+                detail="Falta la fecha de inicio de trabajo. Ejecutá migration_v18.sql en Supabase.",
+            )
         if salary_keys & set(data):
             raise HTTPException(
                 status_code=400,

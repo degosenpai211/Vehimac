@@ -11,7 +11,7 @@ import RescheduleRow from '../components/RescheduleRow'
 import PieceProcessFields from '../components/PieceProcessFields'
 import Loading from '../components/Loading'
 import { useToast } from '../components/Toast'
-import { api, formatCurrency, formatDate, formatOT, computeBilling, whatsappUrl, openWhatsApp } from '../services/api'
+import { api, formatCurrency, formatDate, formatOT, computeBilling, orderPayable, orderRemaining, whatsappUrl, openWhatsApp } from '../services/api'
 import { STATUS_COLUMNS } from '../utils/status'
 import { emptyProcess, normalizeProcess, serializeProcess, orderProcessDone } from '../utils/process'
 import { addPendingFicha } from '../utils/pendingFichas'
@@ -323,6 +323,8 @@ export default function Ordenes() {
     const waPhone = order.client?.whatsapp || order.client?.phone
     const waText = `Hola, te escribo por la ${formatOT(order)}${order.work_description ? ` (${order.work_description})` : ''}.`
     const processDone = orderProcessDone(order)
+    const payable = orderPayable(order)
+    const leftover = orderRemaining(order)
     return (
     <Draggable draggableId={order.id} index={index}>
       {(provided, snapshot) => (
@@ -385,8 +387,11 @@ export default function Ordenes() {
           {order.vehicle_label && (
             <p className="text-[11px] text-slate-400 leading-tight">{order.vehicle_label}</p>
           )}
-          <div className="flex justify-end items-center py-2 mt-2 border-t border-slate-100 text-sm">
-            <span className="font-bold">{formatCurrency(order.total_amount || order.price_charged)}</span>
+          <div className="flex flex-col items-end py-2 mt-2 border-t border-slate-100 text-sm">
+            <span className="font-bold">{formatCurrency(payable)}</span>
+            {leftover > 0 && leftover < payable && (
+              <span className="text-xs font-medium text-amber-700">Falta {formatCurrency(leftover)}</span>
+            )}
           </div>
           <div className="flex flex-wrap gap-1 mb-1">
             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${

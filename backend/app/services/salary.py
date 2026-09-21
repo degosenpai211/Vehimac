@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from calendar import monthrange
 from datetime import date, timedelta
 
@@ -6,6 +7,13 @@ MONTHS = [
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
 WEEKDAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+WEEK_LENGTH_DAYS = 7
+FORTNIGHT_LENGTH_DAYS = 14
+HISTORY_COUNT = 6
+KIND_WEEKLY = "weekly"
+KIND_BIWEEKLY = "biweekly"
+KIND_MONTHLY = "monthly"
+MAX_MONTH_STEPS = 240
 PROCESS_LABELS = {
     "diseno": "Diseño",
     "soldadura": "Soldadura",
@@ -43,32 +51,129 @@ def _shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
     return y, m
 
 
+def add_calendar_months(day: date, delta: int) -> date:
+    year, month = _shift_month(day.year, day.month, delta)
+    return clamp_month_day(year, month, day.day)
+
+
 def week_monday(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
-def recent_periods(today: date, period: str, pay_day: int | None) -> list[dict]:
-    period = period or "monthly"
-    if period == "weekly":
-        return _recent_weekly(today, pay_day)
-    if period == "biweekly":
+@dataclass(frozen=True)
+class PeriodConfig:
+    kind: str
+    pay_day: int | None = None
+    started: date | None = None
+
+
+def recent_periods(today: date, config: PeriodConfig) -> list[dict]:
+    kind = config.kind or KIND_MONTHLY
+    if config.started:
+        return _recent_from_anchor(today, config)
+    if kind == KIND_WEEKLY:
+        return _recent_weekly(today, config.pay_day)
+    if kind == KIND_BIWEEKLY:
         return _recent_biweekly(today)
-    return _recent_monthly(today, pay_day)
+    return _recent_monthly(today, config.pay_day)
+
+
+def _period_item(parts: dict) -> dict:
+    legal = bool(parts.get("legal_window"))
+    payday = parts["payday"]
+    return {
+        "key": parts["key"],
+        "start": parts["start"],
+        "end": parts["end"],
+        "payday": payday,
+        "deadline": add_business_days(payday, 5) if legal else payday,
+        "label": parts["label"],
+        "legal_window": legal,
+    }
+
+
+def _cycle_end(start: date, kind: str) -> date:
+    if kind == KIND_WEEKLY:
+        return start + timedelta(days=WEEK_LENGTH_DAYS - 1)
+    if kind == KIND_BIWEEKLY:
+        return start + timedelta(days=FORTNIGHT_LENGTH_DAYS - 1)
+    return add_calendar_months(start, 1) - timedelta(days=1)
+
+
+def _current_cycle_start(today: date, started: date, kind: str) -> date:
+    if today < started:
+        return started
+    if kind == KIND_WEEKLY:
+        steps = (today - started).days // WEEK_LENGTH_DAYS
+        return started + timedelta(days=steps * WEEK_LENGTH_DAYS)
+    if kind == KIND_BIWEEKLY:
+        steps = (today - started).days // FORTNIGHT_LENGTH_DAYS
+        return started + timedelta(days=steps * FORTNIGHT_LENGTH_DAYS)
+    start = started
+    steps = 0
+    while _cycle_end(start, kind) < today and steps < MAX_MONTH_STEPS:
+        start = add_calendar_months(start, 1)
+        steps += 1
+    return start
+
+
+def _shift_cycle_start(start: date, kind: str, delta: int) -> date:
+    if kind == KIND_WEEKLY:
+        return start + timedelta(days=WEEK_LENGTH_DAYS * delta)
+    if kind == KIND_BIWEEKLY:
+        return start + timedelta(days=FORTNIGHT_LENGTH_DAYS * delta)
+    return add_calendar_months(start, delta)
+
+
+def _cycle_label(start: date, end: date, kind: str) -> str:
+    span = f"{start.strftime('%d/%m')}–{end.strftime('%d/%m')}"
+    if kind == KIND_WEEKLY:
+        return f"Semana {span}"
+    if kind == KIND_BIWEEKLY:
+        return f"Quincena {span}"
+    return f"Mes {span}"
+
+
+def _recent_from_anchor(today: date, config: PeriodConfig) -> list[dict]:
+    started = config.started
+    kind = config.kind or KIND_MONTHLY
+    if started is None:
+        return []
+    current_start = _current_cycle_start(today, started, kind)
+    prefix = {KIND_WEEKLY: "w", KIND_BIWEEKLY: "q", KIND_MONTHLY: "m"}.get(kind, "m")
+    legal = kind == KIND_MONTHLY
+    out = []
+    cursor = current_start
+    for _ in range(HISTORY_COUNT):
+        if cursor < started:
+            break
+        end = _cycle_end(cursor, kind)
+        out.append(_period_item({
+            "key": f"{prefix}:{cursor.isoformat()}",
+            "start": cursor,
+            "end": end,
+            "payday": end,
+            "label": _cycle_label(cursor, end, kind),
+            "legal_window": legal,
+        }))
+        cursor = _shift_cycle_start(cursor, kind, -1)
+    return out
 
 
 def _recent_monthly(today: date, pay_day: int | None) -> list[dict]:
     out = []
     y, m = today.year, today.month
-    for _ in range(6):
+    for _ in range(HISTORY_COUNT):
+        last = monthrange(y, m)[1]
         payday = clamp_month_day(y, m, pay_day if pay_day else 30)
-        out.append({
+        out.append(_period_item({
             "key": f"m:{y:04d}-{m:02d}",
             "payday": payday,
-            "deadline": add_business_days(payday, 5),
+            "end": date(y, m, last),
             "start": date(y, m, 1),
             "label": f"{MONTHS[m - 1]} {y}",
             "legal_window": True,
-        })
+        }))
         y, m = _shift_month(y, m, -1)
     return out
 
@@ -82,16 +187,17 @@ def _recent_weekly(today: date, pay_day: int | None) -> list[dict]:
         payday -= timedelta(days=7)
     out = []
     p = payday
-    for _ in range(6):
+    for _ in range(HISTORY_COUNT):
         start = week_monday(p)
-        out.append({
+        end = start + timedelta(days=6)
+        out.append(_period_item({
             "key": f"w:{p.isoformat()}",
             "payday": p,
-            "deadline": p,
+            "end": end,
             "start": start,
-            "label": f"Semana {start.strftime('%d/%m')}–{(start + timedelta(days=6)).strftime('%d/%m')}",
+            "label": f"Semana {start.strftime('%d/%m')}–{end.strftime('%d/%m')}",
             "legal_window": False,
-        })
+        }))
         p -= timedelta(days=7)
     return out
 
@@ -101,22 +207,22 @@ def _recent_biweekly(today: date) -> list[dict]:
     y, m = today.year, today.month
     for _ in range(4):
         last = monthrange(y, m)[1]
-        out.append({
+        out.append(_period_item({
             "key": f"q:{y:04d}-{m:02d}-b",
             "payday": date(y, m, last),
-            "deadline": date(y, m, last),
+            "end": date(y, m, last),
             "start": date(y, m, 16),
             "label": f"2.ª quincena {MONTHS[m - 1]} {y}",
             "legal_window": False,
-        })
-        out.append({
+        }))
+        out.append(_period_item({
             "key": f"q:{y:04d}-{m:02d}-a",
             "payday": date(y, m, 15),
-            "deadline": date(y, m, 15),
+            "end": date(y, m, 15),
             "start": date(y, m, 1),
             "label": f"1.ª quincena {MONTHS[m - 1]} {y}",
             "legal_window": False,
-        })
+        }))
         y, m = _shift_month(y, m, -1)
     return out
 

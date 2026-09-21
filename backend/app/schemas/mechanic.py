@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -18,6 +18,7 @@ class MechanicUpdate(BaseModel):
     salary_mode: str | None = Field(None, pattern="^(fixed|per_job|both)$")
     salary_period: str | None = Field(None, pattern="^(weekly|biweekly|monthly)$")
     pay_day: int | None = Field(None, ge=0, le=31)
+    work_started_on: date | None = None
 
 
 class MechanicResponse(BaseModel):
@@ -29,6 +30,7 @@ class MechanicResponse(BaseModel):
     salary_mode: str = "both"
     salary_period: str = "monthly"
     pay_day: int = 30
+    work_started_on: date | None = None
     created_at: datetime
 
     class Config:
