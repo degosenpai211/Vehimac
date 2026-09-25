@@ -163,6 +163,7 @@ export const api = {
   deleteFinance: (id) => request(`/finances/${id}`, { method: 'DELETE' }),
   getSalaryBoard: () => request('/finances/salaries'),
   paySalary: (data) => request('/finances/salaries/pay', { method: 'POST', body: JSON.stringify(data) }),
+  paySalaryAdvance: (data) => request('/finances/salaries/advance', { method: 'POST', body: JSON.stringify(data) }),
   getProfitLoss: (params = {}) => {
     const q = new URLSearchParams(params).toString()
     return request(`/finances/pl${q ? `?${q}` : ''}`)

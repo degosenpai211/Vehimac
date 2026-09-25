@@ -58,6 +58,13 @@ class SalaryPayCreate(BaseModel):
         return self
 
 
+class SalaryAdvanceCreate(BaseModel):
+    mechanic_id: UUID
+    period_key: str = Field(..., min_length=1, max_length=40)
+    amount: Decimal = Field(..., gt=0)
+    date: date_type | None = None
+
+
 class FinanceSettingsUpdate(BaseModel):
     cash_opening: Decimal | None = Field(None, ge=0)
     rent_1: Decimal | None = Field(None, ge=0)

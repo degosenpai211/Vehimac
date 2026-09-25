@@ -7,7 +7,11 @@ import { api, formatCurrency, formatDate } from '../services/api'
 const MODE_LABEL = { fixed: 'Sueldo fijo', per_job: 'Por trabajos', both: 'Fijo + trabajos' }
 const PERIOD_LABEL = { weekly: 'Semanal', biweekly: 'Quincenal', monthly: 'Mensual' }
 const ROLE_LABEL = { designer: 'Diseñador', mechanic: 'Mecánico', admin: 'Administrativo' }
-const WEEKDAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+const PERIOD_HINT = {
+  weekly: 'Semana: lunes a sábado. Se paga el sábado.',
+  biweekly: 'Quincena: dos semanas lunes a sábado. Se paga el sábado de la segunda semana.',
+  monthly: 'Mes: del día 1 al último día. Se paga el último día del mes. Después hay 5 días hábiles de plazo.',
+}
 const STATUS = {
   pagado: { label: 'Pagado', cls: 'bg-emerald-50 text-emerald-700' },
   parcial: { label: 'Parcial', cls: 'bg-amber-50 text-amber-800' },
@@ -17,6 +21,7 @@ const STATUS = {
   proximo: { label: 'Próximo', cls: 'bg-slate-100 text-slate-600' },
   sin_config: { label: 'Sin sueldo', cls: 'bg-slate-100 text-slate-500' },
 }
+const PAID_TOLERANCE = 0.009
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
@@ -28,11 +33,41 @@ function defaultWorkStart(worker) {
   return todayIso()
 }
 
+function leftoverOf(worker) {
+  const remaining = worker.remaining_base
+  if (remaining != null && remaining !== '') {
+    const value = Number(remaining)
+    if (Number.isFinite(value)) {
+      if (value <= PAID_TOLERANCE) return 0
+      return Math.round(value * 100) / 100
+    }
+  }
+  const base = Number(worker.salary_base) || 0
+  const paid = Number(worker.paid_sum) || 0
+  const leftover = base - paid
+  if (leftover <= PAID_TOLERANCE) return 0
+  return Math.round(leftover * 100) / 100
+}
+
+function workersWhoCanAdvance(workers) {
+  return workers.filter((worker) => leftoverOf(worker) > 0 && worker.salary_mode !== 'per_job')
+}
+
+function emptyAdvance(worker) {
+  return {
+    mechanic_id: worker.id,
+    amount: '',
+    date: todayIso(),
+    period_key: worker.period_key || '',
+  }
+}
+
 function emptyPay(worker) {
+  const leftover = leftoverOf(worker)
   const showBase = worker.salary_mode !== 'per_job'
   const showExtra = worker.salary_mode !== 'fixed'
   return {
-    base: showBase ? String(worker.salary_base || '') : '',
+    base: showBase && leftover > 0 ? String(leftover) : '',
     extra: showExtra ? '' : '',
     date: new Date().toISOString().slice(0, 10),
     period_key: worker.period_key || '',
@@ -46,8 +81,11 @@ export default function SalarySection({ onPaid, embedded = false }) {
   const [pay, setPay] = useState(null)
   const [form, setForm] = useState({})
   const [payForm, setPayForm] = useState({ base: '', extra: '', date: '' })
+  const [advance, setAdvance] = useState(null)
+  const [advanceForm, setAdvanceForm] = useState({ amount: '', date: '', mechanic_id: '' })
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
+  const workers = board?.workers || []
 
   const load = async () => {
     setLoading(true)
@@ -108,6 +146,12 @@ export default function SalarySection({ onPaid, embedded = false }) {
       toast('El pago debe ser mayor a 0', 'error')
       return
     }
+    const leftover = leftoverOf(pay)
+    const payingCurrent = (payForm.period_key || pay.period_key) === pay.period_key
+    if (payingCurrent && pay.salary_mode !== 'per_job' && base > leftover + PAID_TOLERANCE) {
+      toast(`El sueldo base no puede pasar lo que falta (${formatCurrency(leftover)})`, 'error')
+      return
+    }
     setSaving(true)
     try {
       await api.paySalary({
@@ -128,8 +172,66 @@ export default function SalarySection({ onPaid, embedded = false }) {
     }
   }
 
-  const workers = board?.workers || []
+  const openAdvance = () => {
+    const eligible = workersWhoCanAdvance(workers)
+    const first = eligible[0]
+    if (!first) {
+      toast('Nadie tiene sueldo pendiente para adelantar', 'error')
+      return
+    }
+    setAdvance(true)
+    setAdvanceForm(emptyAdvance(first))
+  }
+
+  const changeAdvanceWorker = (mechanicId) => {
+    const worker = workers.find((row) => row.id === mechanicId)
+    if (!worker) return
+    setAdvanceForm(emptyAdvance(worker))
+  }
+
+  const submitAdvance = async (e) => {
+    e.preventDefault()
+    const worker = workers.find((row) => row.id === advanceForm.mechanic_id)
+    if (!worker) {
+      toast('Elegí a quién se le adelanta', 'error')
+      return
+    }
+    const amount = Number(advanceForm.amount) || 0
+    const leftover = leftoverOf(worker)
+    if (amount <= 0) {
+      toast('El adelanto debe ser mayor a 0', 'error')
+      return
+    }
+    if (amount > leftover + PAID_TOLERANCE) {
+      toast(`El adelanto no puede pasar el sueldo pendiente (${formatCurrency(leftover)})`, 'error')
+      return
+    }
+    setSaving(true)
+    try {
+      await api.paySalaryAdvance({
+        mechanic_id: worker.id,
+        period_key: advanceForm.period_key || worker.period_key,
+        amount,
+        date: advanceForm.date || null,
+      })
+      toast('Adelanto registrado como egreso', 'success')
+      setAdvance(null)
+      await load()
+      onPaid?.()
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const eligibleForAdvance = workersWhoCanAdvance(workers)
+  const selectedAdvanceWorker = workers.find((row) => row.id === advanceForm.mechanic_id)
   const payTotal = (Number(payForm.base) || 0) + (Number(payForm.extra) || 0)
+  const payLeftover = pay ? leftoverOf(pay) : 0
+  const payingCurrentPeriod = Boolean(pay) && payForm.period_key === pay.period_key
+  const payShowsCurrentAdvance = payingCurrentPeriod && (Number(pay.advance_sum) || 0) > 0
+  const currentBaseCovered = payingCurrentPeriod && payLeftover <= 0
 
   return (
     <div className="space-y-3">
@@ -143,9 +245,19 @@ export default function SalarySection({ onPaid, embedded = false }) {
           Sueldo fijo, por trabajos o ambos. En mensual hay 5 días hábiles desde el día de pago.
         </p>
         {board && (
-          <p className="text-sm text-slate-600 sm:whitespace-nowrap">
-            Pagado este mes: <span className="font-bold">{formatCurrency(board.month_total)}</span>
-          </p>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <p className="text-sm text-slate-600 sm:whitespace-nowrap">
+              Pagado este mes: <span className="font-bold">{formatCurrency(board.month_total)}</span>
+            </p>
+            <button
+              type="button"
+              className="btn-secondary btn-sm min-h-[44px] sm:min-h-0"
+              onClick={openAdvance}
+              disabled={eligibleForAdvance.length === 0}
+            >
+              <Wallet size={14} /> Adelantos
+            </button>
+          </div>
         )}
       </div>
 
@@ -168,6 +280,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
         <ul className="card divide-y divide-slate-100">
           {workers.map((w) => {
             const st = STATUS[w.status] || STATUS.proximo
+            const leftover = leftoverOf(w)
             return (
               <li key={w.id} className="p-4 space-y-2">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -189,6 +302,10 @@ export default function SalarySection({ onPaid, embedded = false }) {
                     <p>Pagar hasta {formatDate(w.deadline)} (5 días hábiles)</p>
                   )}
                   {w.paid_sum > 0 && <p>Pagado en este período: {formatCurrency(w.paid_sum)}</p>}
+                  {w.advance_sum > 0 && <p>Adelanto: {formatCurrency(w.advance_sum)}</p>}
+                  {w.salary_mode !== 'per_job' && leftover > 0 && (
+                    <p>Falta: {formatCurrency(leftover)}</p>
+                  )}
                   {w.unpaid_previous > 0 && (
                     <p>
                       Hay {w.unpaid_previous} período{w.unpaid_previous === 1 ? '' : 's'} anterior{w.unpaid_previous === 1 ? '' : 'es'} sin registrar.
@@ -233,7 +350,6 @@ export default function SalarySection({ onPaid, embedded = false }) {
                   setForm({
                     ...form,
                     salary_period,
-                    pay_day: salary_period === 'weekly' ? '4' : salary_period === 'monthly' ? '30' : form.pay_day,
                   })
                 }}
               >
@@ -261,7 +377,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
                 </button>
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Desde esa fecha hasta que complete la semana, quincena o mes. Si se retrasa, vuelve de vacaciones o pide permiso, cambiá el día.
+                Si se retrasa, vuelve de vacaciones o pide permiso, cambiá el día. La primera semana o mes puede empezar a mitad.
               </p>
             </div>
             {form.salary_mode !== 'per_job' && (
@@ -277,33 +393,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
                 />
               </div>
             )}
-            {form.salary_period === 'monthly' && !form.work_started_on && (
-              <div>
-                <label className="label">Día de pago del mes</label>
-                <input
-                  className="input"
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={form.pay_day}
-                  onChange={(e) => setForm({ ...form, pay_day: e.target.value })}
-                />
-                <p className="text-xs text-slate-400 mt-1">Después de ese día hay 5 días hábiles de plazo.</p>
-              </div>
-            )}
-            {form.salary_period === 'weekly' && !form.work_started_on && (
-              <div>
-                <label className="label">Día de pago</label>
-                <select className="input" value={form.pay_day} onChange={(e) => setForm({ ...form, pay_day: e.target.value })}>
-                  {WEEKDAYS.map((d, i) => (
-                    <option key={d} value={i}>{d}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {form.salary_period === 'biweekly' && !form.work_started_on && (
-              <p className="text-xs text-slate-500">Quincena: el 15 y el último día del mes.</p>
-            )}
+            <p className="text-xs text-slate-500">{PERIOD_HINT[form.salary_period] || PERIOD_HINT.monthly}</p>
             <div className="flex justify-end gap-2">
               <button type="button" className="btn-secondary" onClick={() => setConfig(null)}>Cancelar</button>
               <button type="submit" disabled={saving} className="btn-primary">Guardar</button>
@@ -312,22 +402,91 @@ export default function SalarySection({ onPaid, embedded = false }) {
         )}
       </Modal>
 
+      <Modal open={!!advance} onClose={() => setAdvance(null)} title="Adelanto de sueldo">
+        {advance && (
+          <form onSubmit={submitAdvance} className="space-y-3">
+            <div>
+              <label className="label">Quién pide el adelanto</label>
+              <select
+                className="input"
+                value={advanceForm.mechanic_id}
+                onChange={(e) => changeAdvanceWorker(e.target.value)}
+              >
+                {eligibleForAdvance.map((worker) => (
+                  <option key={worker.id} value={worker.id}>{worker.name}</option>
+                ))}
+              </select>
+            </div>
+            {selectedAdvanceWorker && (
+              <p className="text-xs text-slate-500">
+                {selectedAdvanceWorker.period_label} · pendiente {formatCurrency(leftoverOf(selectedAdvanceWorker))}
+              </p>
+            )}
+            <div>
+              <label className="label">Monto del adelanto (Bs.)</label>
+              <input
+                className="input"
+                type="number"
+                min="0.01"
+                step="0.01"
+                max={selectedAdvanceWorker ? leftoverOf(selectedAdvanceWorker) : undefined}
+                value={advanceForm.amount}
+                onChange={(e) => setAdvanceForm({ ...advanceForm, amount: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label className="label">Fecha</label>
+              <input
+                type="date"
+                className="input"
+                value={advanceForm.date}
+                onChange={(e) => setAdvanceForm({ ...advanceForm, date: e.target.value })}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={() => setAdvance(null)}>Cancelar</button>
+              <button type="submit" disabled={saving} className="btn-primary">Registrar adelanto</button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
       <Modal open={!!pay} onClose={() => setPay(null)} title={pay ? `Pagar · ${pay.name}` : 'Pagar'} size="lg">
         {pay && (
           <form onSubmit={submitPay} className="space-y-3">
+            {payShowsCurrentAdvance && (
+              <div className="rounded-lg bg-amber-50 text-amber-900 text-sm px-3 py-2">
+                {payLeftover > 0
+                  ? `Ya se le adelantó ${formatCurrency(pay.advance_sum)} en este período. El resto del sueldo es ${formatCurrency(payLeftover)}. Si seguís, se registra solo ese resto.`
+                  : `Ya se le adelantó ${formatCurrency(pay.advance_sum)}. El sueldo de este período ya está cubierto. No hay más sueldo base que pagar.`}
+              </div>
+            )}
             <div>
               <label className="label">Período</label>
               <select
                 className="input"
                 value={payForm.period_key}
-                onChange={(e) => setPayForm({ ...payForm, period_key: e.target.value })}
+                onChange={(e) => {
+                  const period_key = e.target.value
+                  const isCurrent = period_key === pay.period_key
+                  const leftover = leftoverOf(pay)
+                  let base = ''
+                  if (pay.salary_mode !== 'per_job' && isCurrent && leftover > 0) {
+                    base = String(leftover)
+                  }
+                  if (pay.salary_mode !== 'per_job' && !isCurrent) {
+                    base = String(pay.salary_base || '')
+                  }
+                  setPayForm({ ...payForm, period_key, base })
+                }}
               >
                 {(pay.periods || [{ key: pay.period_key, label: pay.period_label }]).map((p) => (
                   <option key={p.key} value={p.key}>{p.label}</option>
                 ))}
               </select>
             </div>
-            {pay.salary_mode !== 'per_job' && (
+            {pay.salary_mode !== 'per_job' && !currentBaseCovered && (
               <div>
                 <label className="label">Sueldo base</label>
                 <input

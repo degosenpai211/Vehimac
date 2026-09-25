@@ -11,6 +11,7 @@ from app.schemas.finance import (
     FinanceSettingsUpdate,
     FinanceSummary,
     FinanceType,
+    SalaryAdvanceCreate,
     SalaryPayCreate,
 )
 from app.services.pl import (
@@ -24,9 +25,15 @@ from app.services.pl import (
     week_bounds,
 )
 from app.services.salary import (
+    ADVANCE_DESCRIPTION_PREFIX,
+    AdvanceRequest,
     PeriodConfig,
+    advance_fits,
+    advances_in,
     as_start_date,
     jobs_for_worker,
+    leftover_base,
+    PAID_TOLERANCE,
     period_status,
     periods_since,
     pick_period,
@@ -274,6 +281,12 @@ def salary_board():
         status = period_status(current, paid_sum, base, mode, today)
         if mode != "per_job" and base <= 0:
             status = "sin_config"
+        current_pays = [
+            pay for pay in mine
+            if (pay.get("salary_period_key") or "") == current["key"]
+        ]
+        advance_sum = advances_in(current_pays)
+        remaining = leftover_base(base, paid_sum) if mode != "per_job" else 0.0
         if status == "vencido":
             overdue += 1
         if status == "en_plazo":
@@ -311,6 +324,8 @@ def salary_board():
             "legal_window": bool(current.get("legal_window")),
             "status": status,
             "paid_sum": paid_sum,
+            "advance_sum": advance_sum,
+            "remaining_base": remaining,
             "unpaid_previous": unpaid_previous,
             "periods": [
                 {
@@ -336,21 +351,23 @@ def salary_board():
 @router.post("/salaries/pay", response_model=FinanceResponse, status_code=201)
 def pay_salary(body: SalaryPayCreate):
     db = get_supabase()
-    mechanic = (
-        db.table("mechanics")
-        .select("*")
-        .eq("id", str(body.mechanic_id))
-        .limit(1)
-        .execute()
-    )
-    if not mechanic.data:
-        raise HTTPException(status_code=404, detail="Integrante no encontrado")
-    person = mechanic.data[0]
-    total = (body.base_amount or 0) + (body.extra_amount or 0)
+    person = _mechanic_named(db, body.mechanic_id)
+    mode = _mechanic_salary_mode(person)
+    salary_base = float(person.get("salary_base") or 0)
+    already = _salary_paid_in_period(db, body.mechanic_id, body.period_key)
+    leftover = leftover_base(salary_base, already) if mode != "per_job" else 0.0
+    base_amount = float(body.base_amount or 0)
+    extra_amount = float(body.extra_amount or 0)
+    if mode != "per_job" and base_amount > leftover + PAID_TOLERANCE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El sueldo base no puede pasar lo que falta del período. Máximo {leftover:.2f} Bs.",
+        )
+    total = base_amount + extra_amount
     bits = []
-    if body.base_amount and body.base_amount > 0:
+    if base_amount > 0:
         bits.append("base")
-    if body.extra_amount and body.extra_amount > 0:
+    if extra_amount > 0:
         bits.append("trabajos")
     kind = " + ".join(bits) if bits else "pago"
     data = {
@@ -358,6 +375,69 @@ def pay_salary(body: SalaryPayCreate):
         "category": "Sueldos y salarios",
         "amount": float(total),
         "description": f"Salario {person.get('name')} ({kind})",
+        "date": (body.date or date.today()).isoformat(),
+        "mechanic_id": str(body.mechanic_id),
+        "salary_period_key": body.period_key,
+    }
+    return _insert_finance(db, data)
+
+
+def _mechanic_named(db, mechanic_id: UUID) -> dict:
+    mechanic = (
+        db.table("mechanics")
+        .select("*")
+        .eq("id", str(mechanic_id))
+        .limit(1)
+        .execute()
+    )
+    if not mechanic.data:
+        raise HTTPException(status_code=404, detail="Integrante no encontrado")
+    return mechanic.data[0]
+
+
+def _mechanic_salary_mode(person: dict) -> str:
+    if (person.get("role") or "") == "admin":
+        return "fixed"
+    return person.get("salary_mode") or "both"
+
+
+def _salary_paid_in_period(db, mechanic_id: UUID, period_key: str) -> float:
+    pays = (
+        db.table("finances")
+        .select("amount")
+        .eq("type", "gasto")
+        .eq("mechanic_id", str(mechanic_id))
+        .eq("salary_period_key", period_key)
+        .in_("category", ["Salarios", "Sueldos y salarios"])
+        .execute()
+    ).data or []
+    return sum(float(row.get("amount") or 0) for row in pays)
+
+
+@router.post("/salaries/advance", response_model=FinanceResponse, status_code=201)
+def pay_salary_advance(body: SalaryAdvanceCreate):
+    db = get_supabase()
+    person = _mechanic_named(db, body.mechanic_id)
+    mode = _mechanic_salary_mode(person)
+    if mode == "per_job":
+        raise HTTPException(
+            status_code=400,
+            detail="Este integrante no tiene sueldo fijo para adelantar",
+        )
+    base = float(person.get("salary_base") or 0)
+    already = _salary_paid_in_period(db, body.mechanic_id, body.period_key)
+    amount = float(body.amount)
+    if not advance_fits(AdvanceRequest(salary_base=base, already_paid=already, amount=amount)):
+        left = leftover_base(base, already)
+        raise HTTPException(
+            status_code=400,
+            detail=f"El adelanto no puede pasar el sueldo del período. Máximo {left:.2f} Bs.",
+        )
+    data = {
+        "type": "gasto",
+        "category": "Sueldos y salarios",
+        "amount": amount,
+        "description": f"{ADVANCE_DESCRIPTION_PREFIX}{person.get('name')}".rstrip(),
         "date": (body.date or date.today()).isoformat(),
         "mechanic_id": str(body.mechanic_id),
         "salary_period_key": body.period_key,
