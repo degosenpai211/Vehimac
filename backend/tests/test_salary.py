@@ -11,6 +11,8 @@ from app.services.salary import (
     DateSpan,
     description_is_advance,
     leftover_base,
+    pay_period_key,
+    description_matches_worker,
     pick_period,
     periods_since,
     recent_periods,
@@ -189,6 +191,7 @@ class AdvanceTests(TestCase):
 
     def test_description_marks_only_advance_rows(self):
         self.assertTrue(description_is_advance("Adelanto Juan"))
+        self.assertTrue(description_is_advance("adelanto anghelo"))
         self.assertFalse(description_is_advance("Salario Juan (base)"))
         self.assertFalse(description_is_advance(""))
 
@@ -198,6 +201,22 @@ class AdvanceTests(TestCase):
             {"description": "Salario Juan (base)", "amount": 700},
         ]
         self.assertEqual(advances_in(pays), 500)
+
+    def test_description_matches_worker_by_first_name(self):
+        self.assertTrue(description_matches_worker("adelanto anghelo", "Anghelo Ureña"))
+        self.assertTrue(description_matches_worker("Adelanto Anghelo Ureña", "Anghelo Ureña"))
+        self.assertFalse(description_matches_worker("adelanto rider", "Anghelo Ureña"))
+
+    def test_short_first_name_needs_full_name(self):
+        self.assertFalse(description_matches_worker("pago ana", "Ana Perez"))
+        self.assertTrue(description_matches_worker("pago ana perez", "Ana Perez"))
+
+    def test_pay_without_period_key_uses_the_week_of_the_date(self):
+        periods = recent_periods(date(2026, 9, 29), WEEKLY)
+        pay = {"date": "2026-09-21", "salary_period_key": None}
+        self.assertEqual(pay_period_key(pay, periods), "w:2026-09-21")
+        current = {"date": "2026-09-29"}
+        self.assertEqual(pay_period_key(current, periods), "w:2026-09-28")
 
 
 if __name__ == "__main__":

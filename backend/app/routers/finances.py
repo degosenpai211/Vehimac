@@ -33,6 +33,8 @@ from app.services.salary import (
     as_start_date,
     jobs_for_worker,
     leftover_base,
+    matching_workers,
+    pay_period_key,
     PAID_TOLERANCE,
     period_status,
     periods_since,
@@ -41,6 +43,7 @@ from app.services.salary import (
 )
 
 router = APIRouter(prefix="/finances", tags=["Finanzas"])
+SALARY_CATEGORIES = ["Salarios", "Sueldos y salarios"]
 
 
 @router.get("", response_model=list[FinanceResponse])
@@ -197,7 +200,7 @@ def salary_board():
             db.table("finances")
             .select("*")
             .eq("type", "gasto")
-            .in_("category", ["Salarios", "Sueldos y salarios"])
+            .in_("category", SALARY_CATEGORIES)
             .execute()
         ).data or []
     except Exception:
@@ -218,6 +221,14 @@ def salary_board():
         mid = p.get("mechanic_id")
         if mid:
             pays_by_mechanic.setdefault(str(mid), []).append(p)
+
+    for pay in pays:
+        if pay.get("mechanic_id"):
+            continue
+        found = matching_workers(pay.get("description"), mechanics)
+        if len(found) != 1:
+            continue
+        pays_by_mechanic.setdefault(str(found[0]["id"]), []).append(pay)
 
     since = (today - timedelta(days=60)).isoformat()
     try:
@@ -264,7 +275,7 @@ def salary_board():
         sums = {}
         last = None
         for p in mine:
-            key = p.get("salary_period_key") or ""
+            key = pay_period_key(p, periods)
             if key:
                 sums[key] = sums.get(key, 0) + float(p.get("amount") or 0)
             if not last or str(p.get("date") or "") > str(last.get("date") or ""):
@@ -283,7 +294,7 @@ def salary_board():
             status = "sin_config"
         current_pays = [
             pay for pay in mine
-            if (pay.get("salary_period_key") or "") == current["key"]
+            if pay_period_key(pay, periods) == current["key"]
         ]
         advance_sum = advances_in(current_pays)
         remaining = leftover_base(base, paid_sum) if mode != "per_job" else 0.0
@@ -332,6 +343,9 @@ def salary_board():
                     "key": period["key"],
                     "label": period["label"],
                     "payday": period["payday"].isoformat(),
+                    "start": period["start"].isoformat(),
+                    "paid": round(sums.get(period["key"], 0), 2),
+                    "remaining_base": leftover_base(base, sums.get(period["key"], 0)) if mode != "per_job" else 0.0,
                 }
                 for period in periods
             ],
@@ -354,7 +368,7 @@ def pay_salary(body: SalaryPayCreate):
     person = _mechanic_named(db, body.mechanic_id)
     mode = _mechanic_salary_mode(person)
     salary_base = float(person.get("salary_base") or 0)
-    already = _salary_paid_in_period(db, body.mechanic_id, body.period_key)
+    already = _salary_paid_in_period(db, person, body.period_key)
     leftover = leftover_base(salary_base, already) if mode != "per_job" else 0.0
     base_amount = float(body.base_amount or 0)
     extra_amount = float(body.extra_amount or 0)
@@ -401,17 +415,52 @@ def _mechanic_salary_mode(person: dict) -> str:
     return person.get("salary_mode") or "both"
 
 
-def _salary_paid_in_period(db, mechanic_id: UUID, period_key: str) -> float:
+def _periods_for_person(person: dict, today: date) -> list[dict]:
+    work_started = as_start_date(person.get("work_started_on"))
+    periods = recent_periods(
+        today,
+        PeriodConfig(
+            kind=person.get("salary_period") or "monthly",
+            pay_day=person.get("pay_day"),
+            started=work_started,
+        ),
+    )
+    if work_started is None:
+        periods = periods_since(periods, as_start_date(person.get("created_at")))
+    return periods
+
+
+def _orphan_owner_id(description: str | None, team: list[dict]) -> str:
+    found = matching_workers(description, team)
+    if len(found) != 1:
+        return ""
+    return str(found[0].get("id") or "")
+
+
+def _salary_paid_in_period(db, person: dict, period_key: str) -> float:
     pays = (
         db.table("finances")
-        .select("amount")
+        .select("amount, description, salary_period_key, mechanic_id, date")
         .eq("type", "gasto")
-        .eq("mechanic_id", str(mechanic_id))
-        .eq("salary_period_key", period_key)
-        .in_("category", ["Salarios", "Sueldos y salarios"])
+        .in_("category", SALARY_CATEGORIES)
         .execute()
     ).data or []
-    return sum(float(row.get("amount") or 0) for row in pays)
+    team = (
+        db.table("mechanics")
+        .select("id, name")
+        .eq("active", True)
+        .execute()
+    ).data or []
+    periods = _periods_for_person(person, date.today())
+    person_id = str(person.get("id") or "")
+    total = 0.0
+    for pay in pays:
+        owner = str(pay.get("mechanic_id") or "") or _orphan_owner_id(pay.get("description"), team)
+        if owner != person_id:
+            continue
+        if pay_period_key(pay, periods) == period_key:
+            total += float(pay.get("amount") or 0)
+    return total
 
 
 @router.post("/salaries/advance", response_model=FinanceResponse, status_code=201)
@@ -425,13 +474,25 @@ def pay_salary_advance(body: SalaryAdvanceCreate):
             detail="Este integrante no tiene sueldo fijo para adelantar",
         )
     base = float(person.get("salary_base") or 0)
-    already = _salary_paid_in_period(db, body.mechanic_id, body.period_key)
+    already = _salary_paid_in_period(db, person, body.period_key)
     amount = float(body.amount)
-    if not advance_fits(AdvanceRequest(salary_base=base, already_paid=already, amount=amount)):
-        left = leftover_base(base, already)
+    leftover = leftover_base(base, already)
+    fits = advance_fits(AdvanceRequest(salary_base=base, already_paid=already, amount=amount))
+    if leftover <= 0:
+        if not body.as_extra:
+            raise HTTPException(
+                status_code=400,
+                detail="Este período ya está cubierto. Marcá registrar igual si la plata salió de caja y falta en el sistema.",
+            )
+        if amount > base + PAID_TOLERANCE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El extra no puede pasar un sueldo ({base:.2f} Bs.).",
+            )
+    elif not fits:
         raise HTTPException(
             status_code=400,
-            detail=f"El adelanto no puede pasar el sueldo del período. Máximo {left:.2f} Bs.",
+            detail=f"El adelanto no puede pasar el sueldo del período. Máximo {leftover:.2f} Bs.",
         )
     data = {
         "type": "gasto",
@@ -638,6 +699,11 @@ def create_finance(finance: FinanceCreate):
     data = finance.model_dump(mode="json")
     if not data.get("date"):
         data["date"] = date.today().isoformat()
+    if data.get("category") in SALARY_CATEGORIES and not data.get("mechanic_id"):
+        raise HTTPException(
+            status_code=400,
+            detail="Los sueldos y adelantos se cargan en Finanzas → Salarios (Adelantos o Pagar).",
+        )
     return _insert_finance(db, data)
 
 

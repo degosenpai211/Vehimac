@@ -134,6 +134,9 @@ export default function Finanzas() {
               </button>
             ))}
           </div>
+          <p className="text-xs text-slate-500">
+            Los sueldos y adelantos se cargan en la pestaña Salarios (Adelantos o Pagar).
+          </p>
 
           {loading ? <Loading /> : records.length === 0 ? (
             <EmptyState message="No hay registros" />

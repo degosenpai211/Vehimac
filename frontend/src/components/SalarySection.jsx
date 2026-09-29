@@ -49,8 +49,35 @@ function leftoverOf(worker) {
   return Math.round(leftover * 100) / 100
 }
 
+function leftoverPhrase(status) {
+  if (status === 'proximo') return 'A pagar esta semana'
+  if (status === 'parcial') return 'Falta esta semana'
+  return 'Falta'
+}
+
+function lastPaidIsOtherPeriod(worker) {
+  const current = (worker.periods || []).find((row) => row.key === worker.period_key)
+  const last = String(worker.last_paid_at || '').slice(0, 10)
+  const start = current?.start
+  if (!last || !start) return false
+  return last < start
+}
+
+function leftoverOfPeriod(worker, periodKey) {
+  const period = (worker.periods || []).find((row) => row.key === periodKey)
+  if (period && period.remaining_base != null && period.remaining_base !== '') {
+    const value = Number(period.remaining_base)
+    if (Number.isFinite(value)) {
+      if (value <= PAID_TOLERANCE) return 0
+      return Math.round(value * 100) / 100
+    }
+  }
+  if (periodKey === worker.period_key) return leftoverOf(worker)
+  return leftoverOf(worker)
+}
+
 function workersWhoCanAdvance(workers) {
-  return workers.filter((worker) => leftoverOf(worker) > 0 && worker.salary_mode !== 'per_job')
+  return workers.filter((worker) => (Number(worker.salary_base) || 0) > 0 && worker.salary_mode !== 'per_job')
 }
 
 function emptyAdvance(worker) {
@@ -59,6 +86,7 @@ function emptyAdvance(worker) {
     amount: '',
     date: todayIso(),
     period_key: worker.period_key || '',
+    as_extra: false,
   }
 }
 
@@ -82,7 +110,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
   const [form, setForm] = useState({})
   const [payForm, setPayForm] = useState({ base: '', extra: '', date: '' })
   const [advance, setAdvance] = useState(null)
-  const [advanceForm, setAdvanceForm] = useState({ amount: '', date: '', mechanic_id: '' })
+  const [advanceForm, setAdvanceForm] = useState({ amount: '', date: '', mechanic_id: '', period_key: '', as_extra: false })
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
   const workers = board?.workers || []
@@ -189,6 +217,17 @@ export default function SalarySection({ onPaid, embedded = false }) {
     setAdvanceForm(emptyAdvance(worker))
   }
 
+  const changeAdvancePeriod = (periodKey) => {
+    const worker = workers.find((row) => row.id === advanceForm.mechanic_id)
+    const period = (worker?.periods || []).find((row) => row.key === periodKey)
+    setAdvanceForm({
+      ...advanceForm,
+      period_key: periodKey,
+      date: period?.start || advanceForm.date,
+      as_extra: false,
+    })
+  }
+
   const submitAdvance = async (e) => {
     e.preventDefault()
     const worker = workers.find((row) => row.id === advanceForm.mechanic_id)
@@ -197,13 +236,17 @@ export default function SalarySection({ onPaid, embedded = false }) {
       return
     }
     const amount = Number(advanceForm.amount) || 0
-    const leftover = leftoverOf(worker)
+    const leftover = leftoverOfPeriod(worker, advanceForm.period_key || worker.period_key)
     if (amount <= 0) {
       toast('El adelanto debe ser mayor a 0', 'error')
       return
     }
-    if (amount > leftover + PAID_TOLERANCE) {
+    if (leftover > 0 && amount > leftover + PAID_TOLERANCE) {
       toast(`El adelanto no puede pasar el sueldo pendiente (${formatCurrency(leftover)})`, 'error')
+      return
+    }
+    if (leftover <= 0 && !advanceForm.as_extra) {
+      toast('Este período ya está cubierto. Marcá registrar igual si falta en caja.', 'error')
       return
     }
     setSaving(true)
@@ -213,6 +256,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
         period_key: advanceForm.period_key || worker.period_key,
         amount,
         date: advanceForm.date || null,
+        as_extra: leftover <= 0,
       })
       toast('Adelanto registrado como egreso', 'success')
       setAdvance(null)
@@ -227,6 +271,9 @@ export default function SalarySection({ onPaid, embedded = false }) {
 
   const eligibleForAdvance = workersWhoCanAdvance(workers)
   const selectedAdvanceWorker = workers.find((row) => row.id === advanceForm.mechanic_id)
+  const advanceLeftover = selectedAdvanceWorker
+    ? leftoverOfPeriod(selectedAdvanceWorker, advanceForm.period_key || selectedAdvanceWorker.period_key)
+    : 0
   const payTotal = (Number(payForm.base) || 0) + (Number(payForm.extra) || 0)
   const payLeftover = pay ? leftoverOf(pay) : 0
   const payingCurrentPeriod = Boolean(pay) && payForm.period_key === pay.period_key
@@ -304,7 +351,13 @@ export default function SalarySection({ onPaid, embedded = false }) {
                   {w.paid_sum > 0 && <p>Pagado en este período: {formatCurrency(w.paid_sum)}</p>}
                   {w.advance_sum > 0 && <p>Adelanto: {formatCurrency(w.advance_sum)}</p>}
                   {w.salary_mode !== 'per_job' && leftover > 0 && (
-                    <p>Falta: {formatCurrency(leftover)}</p>
+                    <p>{leftoverPhrase(w.status)}: {formatCurrency(leftover)}</p>
+                  )}
+                  {w.last_paid_at && (
+                    <p>
+                      Último movimiento: {formatCurrency(w.last_paid_amount)} el {formatDate(w.last_paid_at)}
+                      {lastPaidIsOtherPeriod(w) ? ' (otro período, ya cerrado)' : ''}
+                    </p>
                   )}
                   {w.unpaid_previous > 0 && (
                     <p>
@@ -418,9 +471,23 @@ export default function SalarySection({ onPaid, embedded = false }) {
               </select>
             </div>
             {selectedAdvanceWorker && (
-              <p className="text-xs text-slate-500">
-                {selectedAdvanceWorker.period_label} · pendiente {formatCurrency(leftoverOf(selectedAdvanceWorker))}
-              </p>
+              <div>
+                <label className="label">Período</label>
+                <select
+                  className="input"
+                  value={advanceForm.period_key}
+                  onChange={(e) => changeAdvancePeriod(e.target.value)}
+                >
+                  {(selectedAdvanceWorker.periods || [{ key: selectedAdvanceWorker.period_key, label: selectedAdvanceWorker.period_label }]).map((period) => (
+                    <option key={period.key} value={period.key}>{period.label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500 mt-1">
+                  {advanceLeftover > 0
+                    ? `Pendiente ${formatCurrency(advanceLeftover)}`
+                    : 'Este período ya tiene el sueldo cargado.'}
+                </p>
+              </div>
             )}
             <div>
               <label className="label">Monto del adelanto (Bs.)</label>
@@ -429,7 +496,7 @@ export default function SalarySection({ onPaid, embedded = false }) {
                 type="number"
                 min="0.01"
                 step="0.01"
-                max={selectedAdvanceWorker ? leftoverOf(selectedAdvanceWorker) : undefined}
+                max={advanceLeftover > 0 ? advanceLeftover : undefined}
                 value={advanceForm.amount}
                 onChange={(e) => setAdvanceForm({ ...advanceForm, amount: e.target.value })}
                 required
@@ -444,6 +511,17 @@ export default function SalarySection({ onPaid, embedded = false }) {
                 onChange={(e) => setAdvanceForm({ ...advanceForm, date: e.target.value })}
               />
             </div>
+            {advanceLeftover <= 0 && (
+              <label className="flex items-start gap-2 text-sm text-amber-900">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={!!advanceForm.as_extra}
+                  onChange={(e) => setAdvanceForm({ ...advanceForm, as_extra: e.target.checked })}
+                />
+                <span>Registrar igual: la plata salió de caja y falta en el sistema (se suma como egreso extra).</span>
+              </label>
+            )}
             <div className="flex justify-end gap-2">
               <button type="button" className="btn-secondary" onClick={() => setAdvance(null)}>Cancelar</button>
               <button type="submit" disabled={saving} className="btn-primary">Registrar adelanto</button>

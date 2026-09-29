@@ -63,6 +63,7 @@ class SalaryAdvanceCreate(BaseModel):
     period_key: str = Field(..., min_length=1, max_length=40)
     amount: Decimal = Field(..., gt=0)
     date: date_type | None = None
+    as_extra: bool = False
 
 
 class FinanceSettingsUpdate(BaseModel):

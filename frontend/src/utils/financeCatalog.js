@@ -28,7 +28,7 @@ export const FINANCE_CATALOG = [
 ]
 
 export function catalogForType(kind) {
-  return FINANCE_CATALOG.filter((c) => c.kind === kind)
+  return FINANCE_CATALOG.filter((c) => c.kind === kind && c.source === 'manual')
 }
 
 export function categoryLabel(idOrLabel) {

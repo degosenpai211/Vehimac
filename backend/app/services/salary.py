@@ -8,6 +8,8 @@ MONTHS = [
 ]
 PAID_TOLERANCE = 0.009
 ADVANCE_DESCRIPTION_PREFIX = "Adelanto "
+ADVANCE_WORD = "adelanto"
+MIN_NAME_TOKEN = 4
 HISTORY_COUNT = 6
 KIND_WEEKLY = "weekly"
 KIND_BIWEEKLY = "biweekly"
@@ -254,7 +256,44 @@ def advance_fits(req: AdvanceRequest) -> bool:
 
 
 def description_is_advance(text: str | None) -> bool:
-    return str(text or "").startswith(ADVANCE_DESCRIPTION_PREFIX)
+    return str(text or "").strip().lower().startswith(ADVANCE_WORD)
+
+
+def description_matches_worker(description: str | None, name: str | None) -> bool:
+    text = str(description or "").strip().lower()
+    full = str(name or "").strip().lower()
+    if not text or not full:
+        return False
+    if full in text:
+        return True
+    first = full.split()[0]
+    if len(first) < MIN_NAME_TOKEN:
+        return False
+    words = text.replace(",", " ").split()
+    return first in words
+
+
+def matching_workers(description: str | None, workers: list[dict]) -> list[dict]:
+    return [worker for worker in workers if description_matches_worker(description, worker.get("name"))]
+
+
+def period_key_covering(day: date | None, periods: list[dict]) -> str:
+    if day is None or not periods:
+        return ""
+    for period in periods:
+        end = period.get("end") or period.get("deadline")
+        if end is None:
+            continue
+        if period["start"] <= day <= end:
+            return period["key"]
+    return ""
+
+
+def pay_period_key(pay: dict, periods: list[dict]) -> str:
+    stored = str(pay.get("salary_period_key") or "").strip()
+    if stored:
+        return stored
+    return period_key_covering(as_start_date(pay.get("date")), periods)
 
 
 def advances_in(pays: list) -> float:
