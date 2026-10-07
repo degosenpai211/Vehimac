@@ -27,7 +27,7 @@ export const FINANCE_CATALOG = [
   { id: 'tributarios', label: 'Tributarios', group: 'indirectos', kind: 'gasto', source: 'manual' },
 ]
 
-const FORM_SOURCES = ['manual', 'qr']
+const FORM_SOURCES = ['manual', 'qr', 'rent']
 
 export function catalogForType(kind) {
   return FINANCE_CATALOG.filter((c) => c.kind === kind && FORM_SOURCES.includes(c.source))
