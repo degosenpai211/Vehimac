@@ -203,31 +203,73 @@ export function whatsappDigits(phone) {
   return digits.startsWith('591') ? digits : `591${digits.replace(/^0/, '')}`
 }
 
-export function whatsappUrl(phone, text) {
+const WHATSAPP_WEB_SEND = 'https://web.whatsapp.com/send'
+
+export function whatsappChatUrl(phone, options = {}) {
   const normalized = whatsappDigits(phone)
   if (!normalized) return null
-  const q = text ? `?text=${encodeURIComponent(text)}` : ''
-  return `https://wa.me/${normalized}${q}`
+  const text = options.text || ''
+  if (options.useWeb) {
+    const params = new URLSearchParams({ phone: normalized })
+    if (text) params.set('text', text)
+    return `${WHATSAPP_WEB_SEND}?${params.toString()}`
+  }
+  const query = text ? `?text=${encodeURIComponent(text)}` : ''
+  return `https://wa.me/${normalized}${query}`
+}
+
+function isIosOrInstalledApp() {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false
+  const standalone = window.navigator.standalone === true
+    || window.matchMedia('(display-mode: standalone)').matches
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  return standalone || ios
+}
+
+function shouldOpenWhatsAppWeb() {
+  if (typeof navigator === 'undefined' || isIosOrInstalledApp()) return false
+  return !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '')
+}
+
+export function whatsappUrl(phone, text) {
+  return whatsappChatUrl(phone, { text, useWeb: shouldOpenWhatsAppWeb() })
+}
+
+function openBrowserTab(url) {
+  const opened = window.open(url, '_blank')
+  if (!opened) return false
+  opened.opener = null
+  opened.focus()
+  return true
 }
 
 export function openWhatsApp(phone, text) {
-  const url = whatsappUrl(phone, text)
-  if (!url) return false
   const digits = whatsappDigits(phone)
-  const standalone = typeof window !== 'undefined' && (
-    window.navigator.standalone === true
-    || window.matchMedia('(display-mode: standalone)').matches
-  )
-  const ios = typeof navigator !== 'undefined' && (
-    /iPad|iPhone|iPod/.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  )
-  if (standalone || ios) {
+  if (!digits) return false
+  if (isIosOrInstalledApp()) {
     window.location.href = `whatsapp://send?phone=${digits}${text ? `&text=${encodeURIComponent(text)}` : ''}`
     return true
   }
-  window.open(url, '_blank', 'noopener,noreferrer')
-  return true
+  const url = whatsappUrl(phone, text)
+  if (!url) return false
+  return openBrowserTab(url)
+}
+
+export function reserveWhatsAppTab() {
+  if (!shouldOpenWhatsAppWeb()) return { needed: false, tab: null }
+  return { needed: true, tab: window.open('about:blank', '_blank') }
+}
+
+export function revealWhatsApp({ tab, phone, text }) {
+  const url = whatsappUrl(phone, text)
+  if (!url) return false
+  if (tab && !tab.closed) {
+    tab.location.replace(url)
+    tab.focus()
+    return true
+  }
+  return openWhatsApp(phone, text)
 }
 
 export function formatOT(order) {

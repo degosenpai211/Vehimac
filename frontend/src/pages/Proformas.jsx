@@ -9,7 +9,7 @@ import ProformaSheet, { formatBs, lineFigures, sheetTotals, proformaContact } fr
 import ProformaPreview from '../components/ProformaPreview'
 import ProformaTrashIcon from '../components/ProformaTrashIcon'
 import { useToast } from '../components/Toast'
-import { api, formatDate, whatsappUrl } from '../services/api'
+import { api, formatDate, reserveWhatsAppTab, whatsappUrl } from '../services/api'
 import { sendProformaPdfToClient } from '../services/proformaPdf'
 import { addPendingFicha } from '../utils/pendingFichas'
 
@@ -225,12 +225,18 @@ export default function Proformas() {
       toast('Falta el WhatsApp del interesado o del cliente.', 'error')
       return
     }
+    const reserved = reserveWhatsAppTab()
+    if (reserved.needed && !reserved.tab) {
+      toast('Chrome bloqueó WhatsApp. Permití ventanas emergentes de este sitio y tocá de nuevo.', 'error')
+      return
+    }
     setPdfBusy(true)
     try {
       await sendProformaPdfToClient(pdfRef.current, {
         id: preview.id,
         number: preview.number,
         phone,
+        tab: reserved.tab,
       })
     } catch (err) {
       if (err?.name === 'AbortError') return

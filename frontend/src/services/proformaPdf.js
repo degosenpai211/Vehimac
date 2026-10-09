@@ -1,6 +1,6 @@
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
-import { api, openWhatsApp } from './api'
+import { api, revealWhatsApp } from './api'
 
 const MAX_UPLOAD = 7.5 * 1024 * 1024
 // Prueba del link corto /p/xxxxxx: dejar en false para mandar la URL larga de Supabase.
@@ -40,16 +40,26 @@ async function makeProformaPdf(element) {
   throw new Error('El PDF quedó pesado. Probá de nuevo o recargá la página.')
 }
 
-export async function sendProformaPdfToClient(element, { id, number, phone } = {}) {
+function closeReservedTab(tab) {
+  if (!tab || tab.closed) return
+  tab.close()
+}
+
+export async function sendProformaPdfToClient(element, { id, number, phone, tab } = {}) {
   if (!phone) throw new Error('Ese cliente no tiene WhatsApp. Cargalo en su ficha.')
-  const blob = await makeProformaPdf(element)
-  const uploaded = await api.uploadProformaPdf(id, blob, number)
-  const share = USE_SHORT_PROFORMA_LINK
-    ? (uploaded?.share_url || (uploaded?.short_code ? `https://vehimacc.vercel.app/p/${uploaded.short_code}` : uploaded?.url))
-    : uploaded?.url
-  if (!share) throw new Error('No se pudo armar el link del PDF')
-  if (!openWhatsApp(phone, share)) {
-    throw new Error('No se pudo abrir el WhatsApp de ese cliente')
+  try {
+    const blob = await makeProformaPdf(element)
+    const uploaded = await api.uploadProformaPdf(id, blob, number)
+    const share = USE_SHORT_PROFORMA_LINK
+      ? (uploaded?.share_url || (uploaded?.short_code ? `https://vehimacc.vercel.app/p/${uploaded.short_code}` : uploaded?.url))
+      : uploaded?.url
+    if (!share) throw new Error('No se pudo armar el link del PDF')
+    if (!revealWhatsApp({ tab, phone, text: share })) {
+      throw new Error('No se pudo abrir el WhatsApp de ese cliente')
+    }
+    return 'whatsapp'
+  } catch (error) {
+    closeReservedTab(tab)
+    throw error
   }
-  return 'whatsapp'
 }
