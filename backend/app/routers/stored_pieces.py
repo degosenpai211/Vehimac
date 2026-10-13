@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Query
 
 from app.database import get_supabase
-from app.utils.search import sanitize_search
 
 router = APIRouter(prefix="/stored-pieces", tags=["Piezas guardadas"])
 
@@ -33,10 +32,9 @@ def list_stored_pieces(
 
     if client_id:
         query = query.eq("client_id", client_id)
-    safe = sanitize_search(search) if search else ""
-    if safe:
+    if search:
         query = query.or_(
-            f"work_description.ilike.%{safe}%,part_description.ilike.%{safe}%,vehicle_type.ilike.%{safe}%"
+            f"work_description.ilike.%{search}%,part_description.ilike.%{search}%,vehicle_type.ilike.%{search}%"
         )
     if entry_from:
         query = query.gte("entry_date", entry_from)

@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Query
 from app.database import fetch_in, get_supabase, in_parallel
 from app.schemas.client import ClientCreate, ClientResponse, ClientUpdate, VehicleCreate, VehicleResponse
 from app.utils.phone import normalize_bolivia_phone
-from app.utils.search import sanitize_search
 
 router = APIRouter(prefix="/clients", tags=["Clientes"])
 
@@ -114,12 +113,11 @@ def list_clients(
     db = get_supabase()
     query = db.table("clients").select("*", count="exact")
 
-    safe = sanitize_search(search) if search else ""
-    if safe:
+    if search:
         if prefix:
-            query = query.ilike("name", f"{safe}%")
+            query = query.ilike("name", f"{search}%")
         else:
-            query = query.or_(f"name.ilike.%{safe}%,phone.ilike.%{safe}%,whatsapp.ilike.%{safe}%")
+            query = query.or_(f"name.ilike.%{search}%,phone.ilike.%{search}%,whatsapp.ilike.%{search}%")
 
     desc = sort_dir.lower() == "desc"
     sort_col = sort_by if sort_by in ("name", "created_at", "updated_at", "balance_updated_at") else "name"

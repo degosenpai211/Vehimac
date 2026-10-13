@@ -2,7 +2,7 @@
 
 Punto de partida antes de empezar los arreglos del backend. Esta rama guarda todo el trabajo que estaba sin commitear en `master` (login, roles y permisos), para que nada de eso se pierda y se pueda volver a este estado.
 
-Los arreglos de la auditoría del backend van en commits posteriores sobre esta misma rama; están listados al final, en "Arreglos aplicados".
+Todavía **no** incluye ninguno de los arreglos de la auditoría del backend: esos van en commits posteriores sobre esta misma rama.
 
 ## Qué se sube
 
@@ -60,17 +60,6 @@ El repositorio es público, así que estos dos archivos quedaron sin subir:
 - `supabase/salarios.md` — contiene pagos de sueldo reales con nombres de personas.
 
 Siguen en la carpeta local, sin seguimiento de git.
-
-## Arreglos aplicados
-
-Cada lote es un commit aparte y se puede deshacer solo con `git revert <commit>`.
-
-### Lote 1 — solo código, no toca la base de datos
-
-- **Editar una OT ya no la deja a medias.** Antes se reemplazaban las piezas y después se validaba el adelanto; si la validación fallaba, quedaban piezas nuevas con el precio viejo. Ahora se valida primero (`routers/work_orders.py`).
-- **El pago QR no registra plata de más.** Si la OT no tiene saldo pendiente, se rechaza aunque se mande un monto (`services/orders.py`).
-- **Buscar con comas o paréntesis ya no rompe la consulta** en Clientes y Piezas guardadas. La limpieza del texto quedó en un solo lugar, `utils/search.py`, que también usan las OT.
-- Tests nuevos en `backend/tests/test_order_guards.py`.
 
 ## Cómo volver atrás
 

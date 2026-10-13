@@ -146,9 +146,9 @@ def register_qr_payment(order_id: UUID, bank: str, amount: Decimal | None = None
     left = remaining_to_collect(order)
     paid = Decimal(str(amount)) if amount is not None else left
     paid = paid.quantize(Decimal("0.01"))
-    if left <= 0 or paid <= 0:
+    if paid <= 0:
         raise HTTPException(status_code=400, detail="No hay saldo pendiente para registrar")
-    if paid > left:
+    if left > 0 and paid > left:
         paid = left
 
     label = _order_label(order)

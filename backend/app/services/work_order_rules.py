@@ -4,7 +4,6 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from app.schemas.work_order import BillingType, OrderItemCreate, WorkOrderStatus
-from app.utils.search import sanitize_search  # noqa: F401
 
 OT_NUMBER_PREFIX = "OT"
 DEFAULT_BILLING_TYPE = BillingType.sin_factura.value
@@ -42,6 +41,17 @@ DAYS_IN_WEEK = 7
 
 STATUS_ENTREGADO = WorkOrderStatus.entregado.value
 DATE_ISO_LENGTH = 10
+
+
+def sanitize_search(term: str) -> str:
+    cleaned = (
+        term.replace(",", " ")
+        .replace("(", " ")
+        .replace(")", " ")
+        .replace("%", "")
+        .replace("_", " ")
+    )
+    return " ".join(cleaned.split())
 
 
 def as_order_date(value: date | str | None) -> date | None:
