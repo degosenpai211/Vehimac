@@ -11,12 +11,37 @@ export class ApiError extends Error {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+const TOKEN_KEY = 'vehimac_token'
+export const UNAUTHORIZED_EVENT = 'vehimac:unauthorized'
+
+function getToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+function authHeaders() {
+  const token = getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+function closeSession() {
+  try {
+    localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // sin localStorage no hay sesión que borrar
+  }
+  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+}
+
 async function request(path, options = {}, attempt = 0) {
   let res
   try {
     res = await fetch(`${API_URL}/api${path}`, {
-      headers: { 'Content-Type': 'application/json', ...options.headers },
       ...options,
+      headers: { 'Content-Type': 'application/json', ...authHeaders(), ...options.headers },
     })
   } catch {
     const method = (options.method || 'GET').toUpperCase()
@@ -29,11 +54,24 @@ async function request(path, options = {}, attempt = 0) {
 
   if (res.status === 204) return null
   const data = await res.json().catch(() => null)
+  if (res.status === 401 && path !== '/auth/login') closeSession()
   if (!res.ok) {
     const msg = data?.detail || `Error ${res.status}`
     throw new ApiError(typeof msg === 'string' ? msg : JSON.stringify(msg), res.status)
   }
   return data
+}
+
+export const auth = {
+  hasSession: () => Boolean(getToken()),
+  status: () => request('/auth/status'),
+  check: () => request('/auth/me'),
+  login: async (password) => {
+    const data = await request('/auth/login', { method: 'POST', body: JSON.stringify({ password }) })
+    localStorage.setItem(TOKEN_KEY, data.token)
+    return data
+  },
+  logout: closeSession,
 }
 
 export const api = {
@@ -88,11 +126,12 @@ export const api = {
     form.append('file', toUpload)
     let res
     try {
-      res = await fetch(`${API_URL}/api/work-orders/${id}/photos`, { method: 'POST', body: form })
+      res = await fetch(`${API_URL}/api/work-orders/${id}/photos`, { method: 'POST', body: form, headers: authHeaders() })
     } catch {
       throw new ApiError('Sin conexión al servidor. Verificá que el backend esté corriendo.', 0)
     }
     const data = await res.json().catch(() => null)
+    if (res.status === 401) closeSession()
     if (!res.ok) {
       const msg = data?.detail || `Error ${res.status}`
       throw new ApiError(typeof msg === 'string' ? msg : JSON.stringify(msg), res.status)
@@ -122,11 +161,12 @@ export const api = {
     form.append('file', blob, `Proforma-${number || 'VEHIMAC'}.pdf`)
     let res
     try {
-      res = await fetch(`${API_URL}/api/proformas/${id}/pdf`, { method: 'POST', body: form })
+      res = await fetch(`${API_URL}/api/proformas/${id}/pdf`, { method: 'POST', body: form, headers: authHeaders() })
     } catch {
       throw new ApiError('Sin conexión al servidor. Verificá que el backend esté corriendo.', 0)
     }
     const data = await res.json().catch(() => null)
+    if (res.status === 401) closeSession()
     if (!res.ok) {
       const msg = data?.detail || `Error ${res.status}`
       throw new ApiError(typeof msg === 'string' ? msg : JSON.stringify(msg), res.status)

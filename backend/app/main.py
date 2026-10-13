@@ -1,6 +1,9 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import auth
 from app.config import settings
 from app.database import get_supabase
 from app.routers import clients, dashboard, finances, mechanics, proformas, share, stored_pieces, work_orders
@@ -19,14 +22,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(clients.router, prefix="/api")
-app.include_router(mechanics.router, prefix="/api")
-app.include_router(work_orders.router, prefix="/api")
+if not auth.auth_enabled():
+    logging.getLogger("vehimac.auth").warning(
+        "APP_PASSWORD no está definida: la API queda abierta a cualquiera con la URL."
+    )
+
+# Públicos: login y el link corto de proforma que abre el cliente por WhatsApp.
+app.include_router(auth.router, prefix="/api")
 app.include_router(share.router, prefix="/api")
-app.include_router(proformas.router, prefix="/api")
-app.include_router(stored_pieces.router, prefix="/api")
-app.include_router(finances.router, prefix="/api")
-app.include_router(dashboard.router, prefix="/api")
+
+protected = [Depends(auth.require_auth)]
+app.include_router(clients.router, prefix="/api", dependencies=protected)
+app.include_router(mechanics.router, prefix="/api", dependencies=protected)
+app.include_router(work_orders.router, prefix="/api", dependencies=protected)
+app.include_router(proformas.router, prefix="/api", dependencies=protected)
+app.include_router(stored_pieces.router, prefix="/api", dependencies=protected)
+app.include_router(finances.router, prefix="/api", dependencies=protected)
+app.include_router(dashboard.router, prefix="/api", dependencies=protected)
 
 
 @app.get("/")
