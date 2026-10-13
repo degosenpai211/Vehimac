@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import AuthGate from './components/AuthGate'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import PiezasGuardadas from './pages/PiezasGuardadas'
@@ -13,7 +14,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="p/:code" element={<ProformaPublicLink />} />
-      <Route element={<Layout />}>
+      <Route element={<AuthGate><Layout /></AuthGate>}>
         <Route index element={<Dashboard />} />
         <Route path="piezas-guardadas" element={<PiezasGuardadas />} />
         <Route path="inventario" element={<Navigate to="/piezas-guardadas" replace />} />

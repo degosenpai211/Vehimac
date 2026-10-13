@@ -21,7 +21,7 @@ No mezclar infra VPS con features. Path A (Postgres nativo, Nginx, PM2, Hostinge
 ## Qué es
 
 PWA/ERP liviano para taller mecánico en **Bolivia** (Bs., teléfonos +591).  
-Sin auth: cualquiera con la URL opera. Auth queda para **después del VPS**.
+Auth: login con la contraseña del taller (`APP_PASSWORD` en Railway, `backend/app/auth.py`). Sin esa variable la API queda abierta. Usuarios y roles quedan para **después del VPS**.
 
 ---
 
