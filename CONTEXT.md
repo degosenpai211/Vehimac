@@ -1,6 +1,6 @@
 # Vehimac ERP — Contexto técnico
 
-Documento de continuidad. **Última actualización: 2026-09-09** (prospectos en proforma + PDF JPEG para WhatsApp).  
+Documento de continuidad. **Última actualización: 2026-09-29** (login Supabase Auth + roles `admin` / `co_admin`).  
 En un chat nuevo: pegá o adjuntá este archivo y pedí “seguí desde CONTEXT.md”.
 
 ---
@@ -21,7 +21,7 @@ No mezclar infra VPS con features. Path A (Postgres nativo, Nginx, PM2, Hostinge
 ## Qué es
 
 PWA/ERP liviano para taller mecánico en **Bolivia** (Bs., teléfonos +591).  
-Sin auth: cualquiera con la URL opera. Auth queda para **después del VPS**.
+Login con **Supabase Auth** (email + clave). Sin sesión se va a `/login`. El link público `/p/:code` sigue abierto.
 
 ---
 
@@ -31,12 +31,13 @@ Sin auth: cualquiera con la URL opera. Auth queda para **después del VPS**.
 |------|------|------|
 | Frontend | React 18 + Vite 6 + Tailwind 3 + PWA | Vercel (`frontend/`) |
 | Backend | FastAPI + `supabase-py` (PostgREST, no ORM) | Railway `https://vehimac-production-9609.up.railway.app` |
-| DB | Postgres | Supabase — **solo Postgres**, no Auth/Storage/RLS de usuarios |
+| DB | Postgres | Supabase — Postgres + **Auth** (JWT). El front usa la anon key; el API usa service role y verifica el JWT |
 
 Env:
 
 - Backend: `SUPABASE_URL`, `SUPABASE_KEY` (service role), `CORS_ORIGINS`
 - Frontend: `VITE_API_URL` = URL del backend **sin** `/api`. `api.js` concatena `/api`.
+- Frontend Auth: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (nunca la service role)
 
 Deploy breaking: **SQL Supabase → Railway → Vercel**.
 
@@ -58,7 +59,8 @@ Deploy breaking: **SQL Supabase → Railway → Vercel**.
 ### Equipo
 
 - Tres listas: mecánicos, diseñadores y personal administrativo (`mechanics.role`: `mechanic` | `designer` | `admin`). SQL `migration_v10.sql` + `migration_v15.sql`.
-- Administrativos entran a Finanzas → Salarios (sueldo fijo) y **no** se asignan como técnicos de OT.
+- Ese `admin` de Equipo **no** es el login del ERP. El acceso a la app está en `perfiles_usuario.rol` (`admin` | `co_admin`).
+- Administrativos de Equipo entran a Finanzas → Salarios (sueldo fijo) y **no** se asignan como técnicos de OT.
 - El sueldo **no** se edita en Equipo; se carga en Finanzas → Salarios.
 
 ### Salarios (Finanzas)
@@ -99,12 +101,23 @@ Tres pestañas: **Resultados** | **Movimientos** | **Salarios**.
 - QR cobro OT: Mercantil ↔ Ganadero. BNB solo en Finanzas (compra Plastic 27).
 - PWA iPhone: PNG apple-touch, nav inferior, agregar desde Safari.
 
+### Acceso (login y roles)
+
+- Supabase Auth, email + clave. Signup público **apagado**.
+- Al arrancar **sin perfiles**, la pantalla de login pide **dueño y programador a la par** (los dos `admin`). Después, cualquiera de los dos invita desde **Tu cuenta**.
+- Signup público **apagado**. Sin fila o `activo=false` no entra.
+- Roles de app: `admin` ve Finanzas, invita gente y ve KPIs de plata. `co_admin` opera el taller y **no** ve Finanzas ni números de caja.
+- Permisos canónicos: `finanzas.ver`, `usuarios.gestionar` (mismo mapa FE/BE).
+- Recuperar clave por mail (`/recuperar-clave`). Cambiar clave estando adentro (`/cuenta`).
+- Google: botón en el login, todavía no conectado.
+- SQL `migration_v19.sql`.
+
 ### No implementado (acordado)
 
-- Auth en el VPS
 - Ruta pública `/orden/:id/pago`
 - Driver Postgres nativo / Nginx / PM2
 - Cron auto-borrado fotos 90 días
+- Login con Google (solo estructura en el login)
 
 ---
 
@@ -127,6 +140,7 @@ Producción **ya tiene** v2 y v3. Ir en orden lo que falte:
 | `migration_v14.sql` | Prospectos en proforma (`prospect_name`, `prospect_phone`, `prospect_expires_at`) |
 | `migration_v15.sql` | Rol `admin` en `mechanics` (personal administrativo) |
 | `migration_v16.sql` | Link corto de proforma (`pdf_short_code`) — **apagado** en código |
+| `migration_v19.sql` | `perfiles_usuario` (login `admin` / `co_admin`). No es Equipo |
 
 ---
 
@@ -136,11 +150,11 @@ Producción **ya tiene** v2 y v3. Ir en orden lo que falte:
 - Piezas de OT ≠ inventario. Piezas guardadas = OT `terminado`.
 - Finanzas: tipo interno `ingreso` \| `gasto`; en pantalla se dice egreso.
 - **Clientes:** la lista no baja el historial de OT. Solo autos + conteo de `terminado`. El historial se arma al abrir el cliente.
-- **Latencia:** cada `.execute()` a Supabase es un viaje de red (Bolivia/Railway → PostgREST). Kanban y lista de proformas ya no hacen N+1 de piezas/líneas. Inicio junta stats+gráfica en un GET y corre las queries en paralelo. Equipo 2–5 s en un `select` chico = red/región, no SQL pesado.
+- **Latencia:** cada `.execute()` a Supabase es un viaje de red (Bolivia/Railway → PostgREST). Kanban y lista de proformas ya no hacen N+1 de piezas/líneas. Inicio: `/dashboard/stats` es el taller; caja y gráfica van aparte (`/finance-kpis`, `/finance-trends`) y solo las pide el `admin`. Equipo 2–5 s en un `select` chico = red/región, no SQL pesado.
 
-API `/api`: `clients`, `mechanics`, `work-orders`, `proformas`, `stored-pieces`, `finances` (`/pl`, `/settings`, `/salaries`, `/rents/{1|2}`), `dashboard`.
+API `/api`: `auth/me`, `auth/users` (invitar, solo admin), `clients`, `mechanics`, `work-orders`, `proformas`, `stored-pieces`, `finances` (`/pl`, `/settings`, `/salaries`, `/rents/{1|2}`), `dashboard` (`/stats` taller, `/finance-kpis` y `/finance-trends` solo `finanzas.ver`).
 
-Front: `/`, `/piezas-guardadas`, `/clientes`, `/equipo`, `/ordenes`, `/proformas`, `/finanzas`.
+Front: `/login`, `/recuperar-clave`, `/`, `/piezas-guardadas`, `/clientes`, `/equipo`, `/ordenes`, `/proformas`, `/finanzas` (solo admin), `/cuenta`. Público: `/p/:code`.
 
 ---
 
@@ -161,7 +175,13 @@ vehimac/
 │       ├── main.py
 │       ├── config.py
 │       ├── database.py
+│       ├── auth/
+│       │   ├── permissions.py     # mapa admin/co_admin + finanzas.ver
+│       │   ├── middleware.py      # Bearer JWT
+│       │   ├── store.py           # get_user + perfiles_usuario
+│       │   └── ...
 │       ├── routers/
+│       │   ├── auth.py            # /me + invitar usuarios
 │       │   ├── clients.py
 │       │   ├── mechanics.py
 │       │   ├── work_orders.py
@@ -191,6 +211,9 @@ vehimac/
 │   │   ├── main.jsx
 │   │   ├── index.css
 │   │   ├── pages/
+│   │   │   ├── Login.jsx
+│   │   │   ├── RecuperarClave.jsx
+│   │   │   ├── Cuenta.jsx
 │   │   │   ├── Dashboard.jsx          # /
 │   │   │   ├── PiezasGuardadas.jsx    # /piezas-guardadas
 │   │   │   ├── Clientes.jsx           # /clientes
@@ -198,6 +221,11 @@ vehimac/
 │   │   │   ├── Ordenes.jsx            # /ordenes
 │   │   │   ├── Proformas.jsx          # /proformas
 │   │   │   └── Finanzas.jsx           # /finanzas
+│   │   ├── auth/
+│   │   │   ├── authService.js
+│   │   │   ├── AuthContext.jsx
+│   │   │   ├── guards.jsx
+│   │   │   └── roles.js
 │   │   ├── components/
 │   │   │   ├── Layout.jsx
 │   │   │   ├── AgendaList.jsx
@@ -213,6 +241,7 @@ vehimac/
 │   │   │   ├── ProformaSheet.jsx
 │   │   │   ├── ProformaPreview.jsx
 │   │   │   ├── VehimacLogo.jsx
+│   │   │   ├── AuthScreen.jsx
 │   │   │   ├── FinanceChart.jsx
 │   │   │   ├── ResultsSection.jsx
 │   │   │   ├── SalarySection.jsx
@@ -238,10 +267,10 @@ vehimac/
 │           └── bnb-plastic27.jpg
 └── supabase/
     ├── schema.sql                 # solo proyecto nuevo
-    └── migration_v2.sql … v14.sql
+    └── migration_v2.sql … v16.sql, v19.sql
 ```
 
-**Tablas** (después de las migraciones): `clients`, `vehicles`, `mechanics`, `work_orders`, `order_items`, `order_photos`, `proformas`, `proforma_items`, `finances`, `finance_settings`.
+**Tablas** (después de las migraciones): `clients`, `vehicles`, `mechanics`, `work_orders`, `order_items`, `order_photos`, `proformas`, `proforma_items`, `finances`, `finance_settings`, `perfiles_usuario`.
 
 **Buckets Storage:** `ot-photos`, `proforma-pdfs`.
 
@@ -253,6 +282,6 @@ vehimac/
 cd backend   # .env: SUPABASE_URL, SUPABASE_KEY, CORS_ORIGINS=http://localhost:5173
 uvicorn app.main:app --reload --port 8000
 
-cd frontend  # .env: VITE_API_URL=http://localhost:8000
+cd frontend  # .env: VITE_API_URL=http://localhost:8000, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
 npm run dev
 ```

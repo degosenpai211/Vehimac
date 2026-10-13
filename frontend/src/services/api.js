@@ -1,6 +1,8 @@
 import { compressOrderPhoto } from '../utils/compressImage'
+import { authService, getAccessToken } from '../auth/authService'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+export const UNAUTHORIZED_EVENT = 'vehimac:unauthorized'
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -11,12 +13,40 @@ export class ApiError extends Error {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+async function authorizationHeader() {
+  let token = getAccessToken()
+  if (!token) {
+    const session = await authService.getSession().catch(() => null)
+    token = session?.access_token || ''
+  }
+  if (!token) return {}
+  return { Authorization: `Bearer ${token}` }
+}
+
+function raiseIfDenied(status, sentToken) {
+  if (status === 401 && sentToken && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+  }
+}
+
+async function parseBody(res) {
+  if (res.status === 204) return null
+  return res.json().catch(() => null)
+}
+
+function errorMessage(data, status) {
+  const msg = data?.detail || `Error ${status}`
+  return typeof msg === 'string' ? msg : JSON.stringify(msg)
+}
+
 async function request(path, options = {}, attempt = 0) {
+  const auth = await authorizationHeader()
+  const sentToken = Boolean(auth.Authorization)
   let res
   try {
     res = await fetch(`${API_URL}/api${path}`, {
-      headers: { 'Content-Type': 'application/json', ...options.headers },
       ...options,
+      headers: { 'Content-Type': 'application/json', ...auth, ...options.headers },
     })
   } catch {
     const method = (options.method || 'GET').toUpperCase()
@@ -27,17 +57,56 @@ async function request(path, options = {}, attempt = 0) {
     throw new ApiError('Sin conexión al servidor. Verificá que el backend esté corriendo.', 0)
   }
 
-  if (res.status === 204) return null
-  const data = await res.json().catch(() => null)
+  const data = await parseBody(res)
+  if (res.status === 401 && sentToken && attempt < 1) {
+    const session = await authService.refreshSession().catch(() => null)
+    const fresh = session?.access_token || ''
+    const sent = auth.Authorization.replace('Bearer ', '')
+    if (fresh && fresh !== sent) return request(path, options, attempt + 1)
+  }
   if (!res.ok) {
-    const msg = data?.detail || `Error ${res.status}`
-    throw new ApiError(typeof msg === 'string' ? msg : JSON.stringify(msg), res.status)
+    raiseIfDenied(res.status, sentToken)
+    throw new ApiError(errorMessage(data, res.status), res.status)
+  }
+  return data
+}
+
+async function uploadForm(path, form) {
+  const auth = await authorizationHeader()
+  let res
+  try {
+    res = await fetch(`${API_URL}/api${path}`, {
+      method: 'POST',
+      headers: auth,
+      body: form,
+    })
+  } catch {
+    throw new ApiError('Sin conexión al servidor. Verificá que el backend esté corriendo.', 0)
+  }
+  const data = await parseBody(res)
+  if (!res.ok) {
+    raiseIfDenied(res.status, Boolean(auth.Authorization))
+    throw new ApiError(errorMessage(data, res.status), res.status)
   }
   return data
 }
 
 export const api = {
+  me: () => request('/auth/me'),
+  authStatus: () => request('/auth/status'),
+  bootstrapOwners: (payload) => request('/auth/bootstrap', { method: 'POST', body: JSON.stringify(payload) }),
+  listAccessUsers: () => request('/auth/users'),
+  inviteAccessUser: (data) => request('/auth/users', { method: 'POST', body: JSON.stringify(data) }),
+  updateAccessUser: (id, fields) =>
+    request(`/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(fields) }),
+  requestAccess: () => request('/auth/join-requests', { method: 'POST' }),
+  listJoinRequests: () => request('/auth/join-requests'),
+  approveJoinRequest: (id, data) =>
+    request(`/auth/join-requests/${id}/approve`, { method: 'POST', body: JSON.stringify(data) }),
+  rejectJoinRequest: (id) =>
+    request(`/auth/join-requests/${id}/reject`, { method: 'POST' }),
   getStats: () => request('/dashboard/stats'),
+  getFinanceKpis: () => request('/dashboard/finance-kpis'),
   getFinanceTrends: () => request('/dashboard/finance-trends'),
 
   getStoredPieces: (params = {}) => {
@@ -86,18 +155,7 @@ export const api = {
     const toUpload = await compressOrderPhoto(file)
     const form = new FormData()
     form.append('file', toUpload)
-    let res
-    try {
-      res = await fetch(`${API_URL}/api/work-orders/${id}/photos`, { method: 'POST', body: form })
-    } catch {
-      throw new ApiError('Sin conexión al servidor. Verificá que el backend esté corriendo.', 0)
-    }
-    const data = await res.json().catch(() => null)
-    if (!res.ok) {
-      const msg = data?.detail || `Error ${res.status}`
-      throw new ApiError(typeof msg === 'string' ? msg : JSON.stringify(msg), res.status)
-    }
-    return data
+    return uploadForm(`/work-orders/${id}/photos`, form)
   },
   deleteOrderPhoto: (orderId, photoId) =>
     request(`/work-orders/${orderId}/photos/${photoId}`, { method: 'DELETE' }),
@@ -120,18 +178,7 @@ export const api = {
   uploadProformaPdf: async (id, blob, number) => {
     const form = new FormData()
     form.append('file', blob, `Proforma-${number || 'VEHIMAC'}.pdf`)
-    let res
-    try {
-      res = await fetch(`${API_URL}/api/proformas/${id}/pdf`, { method: 'POST', body: form })
-    } catch {
-      throw new ApiError('Sin conexión al servidor. Verificá que el backend esté corriendo.', 0)
-    }
-    const data = await res.json().catch(() => null)
-    if (!res.ok) {
-      const msg = data?.detail || `Error ${res.status}`
-      throw new ApiError(typeof msg === 'string' ? msg : JSON.stringify(msg), res.status)
-    }
-    return data
+    return uploadForm(`/proformas/${id}/pdf`, form)
   },
   getProformaShare: (code) => request(`/p/${encodeURIComponent(code)}`),
 

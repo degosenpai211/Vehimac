@@ -1,8 +1,11 @@
 from datetime import date, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from decimal import Decimal
+
+from app.auth.deps import require_permission
+from app.auth.permissions import PERMISSION_FINANZAS_VER
 
 from app.database import get_supabase
 from app.schemas.finance import (
@@ -42,7 +45,11 @@ from app.services.salary import (
     recent_periods,
 )
 
-router = APIRouter(prefix="/finances", tags=["Finanzas"])
+router = APIRouter(
+    prefix="/finances",
+    tags=["Finanzas"],
+    dependencies=[Depends(require_permission(PERMISSION_FINANZAS_VER))],
+)
 SALARY_CATEGORIES = ["Salarios", "Sueldos y salarios"]
 
 

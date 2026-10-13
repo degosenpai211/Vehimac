@@ -1,8 +1,11 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.auth.deps import require_permission
+from app.auth.permissions import PERMISSION_FINANZAS_VER
+from app.auth.user import AuthUser
 from app.database import get_supabase, in_parallel
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -145,13 +148,8 @@ def _finance_trends_from(records: list, today: date) -> dict:
     return trends
 
 
-def _build_kpis(orders: list, finances: list, proformas: list, today: date) -> dict:
-    week_start = today - timedelta(days=today.weekday())
+def _workshop_kpis(orders: list, proformas: list, today: date) -> dict:
     month_start = date(today.year, today.month, 1)
-    today_fin = _finance_range(finances, today, today)
-    week_fin = _finance_range(finances, week_start, today)
-    month_fin = _finance_range(finances, month_start, today)
-
     active = [o for o in orders if o.get("status") in ("en_proceso", "terminado")]
     overdue = [
         o for o in active
@@ -165,7 +163,54 @@ def _build_kpis(orders: list, finances: list, proformas: list, today: date) -> d
         o for o in active
         if _as_date(o.get("estimated_delivery_date")) == today + timedelta(days=1)
     ]
+    delivered_month = []
+    days_acc = []
+    for o in orders:
+        if o.get("status") != "entregado":
+            continue
+        upd = _as_date(o.get("updated_at"))
+        if upd and upd >= month_start:
+            delivered_month.append(o)
+            entry = _as_date(o.get("entry_date"))
+            if entry and upd:
+                days_acc.append((upd - entry).days)
+    avg_days = round(sum(days_acc) / len(days_acc), 1) if days_acc else 0
+    stale = [
+        o for o in orders
+        if o.get("status") == "terminado"
+        and (u := _as_date(o.get("updated_at")))
+        and u <= today - timedelta(days=7)
+    ]
+    mix_invoice = sum(1 for o in orders if o.get("billing_type") == "con_factura")
+    mix_plain = sum(1 for o in orders if o.get("billing_type") != "con_factura")
+    converted = sum(1 for p in proformas if p.get("status") == "convertida")
+    prof_total = len(proformas)
+    conversion = round((converted / prof_total) * 100, 1) if prof_total else 0
+    overdue_pct = round((len(overdue) / len(active)) * 100, 1) if active else 0
+    return {
+        "avg_days": avg_days,
+        "delivered_month": len(delivered_month),
+        "overdue_count": len(overdue),
+        "overdue_pct": overdue_pct,
+        "due_today_count": len(due_today),
+        "due_tomorrow_count": len(due_tomorrow),
+        "stale_pieces_count": len(stale),
+        "active_orders": len(active),
+        "mix_invoice": mix_invoice,
+        "mix_plain": mix_plain,
+        "proformas_total": prof_total,
+        "proformas_converted": converted,
+        "proformas_conversion_pct": conversion,
+    }
 
+
+def _money_kpis(orders: list, finances: list, today: date) -> dict:
+    week_start = today - timedelta(days=today.weekday())
+    month_start = date(today.year, today.month, 1)
+    today_fin = _finance_range(finances, today, today)
+    week_fin = _finance_range(finances, week_start, today)
+    month_fin = _finance_range(finances, month_start, today)
+    active = [o for o in orders if o.get("status") in ("en_proceso", "terminado")]
     to_collect = sum((_remaining(o) for o in active), Decimal("0"))
     advances_month = Decimal("0")
     income_qr = Decimal("0")
@@ -186,38 +231,15 @@ def _build_kpis(orders: list, finances: list, proformas: list, today: date) -> d
             income_qr += amt
         if "plastic" in cat:
             income_plastic += amt
-
     delivered_month = []
-    days_acc = []
     for o in orders:
         if o.get("status") != "entregado":
             continue
         upd = _as_date(o.get("updated_at"))
         if upd and upd >= month_start:
             delivered_month.append(o)
-            entry = _as_date(o.get("entry_date"))
-            if entry and upd:
-                days_acc.append((upd - entry).days)
-
     tickets = [_order_total(o) for o in delivered_month]
     avg_ticket = float(sum(tickets) / len(tickets)) if tickets else 0
-    avg_days = round(sum(days_acc) / len(days_acc), 1) if days_acc else 0
-
-    stale = [
-        o for o in orders
-        if o.get("status") == "terminado"
-        and (u := _as_date(o.get("updated_at")))
-        and u <= today - timedelta(days=7)
-    ]
-
-    mix_invoice = sum(1 for o in orders if o.get("billing_type") == "con_factura")
-    mix_plain = sum(1 for o in orders if o.get("billing_type") != "con_factura")
-
-    converted = sum(1 for p in proformas if p.get("status") == "convertida")
-    prof_total = len(proformas)
-    conversion = round((converted / prof_total) * 100, 1) if prof_total else 0
-    overdue_pct = round((len(overdue) / len(active)) * 100, 1) if active else 0
-
     return {
         "income_today": today_fin["total_ingresos"],
         "income_week": week_fin["total_ingresos"],
@@ -231,54 +253,47 @@ def _build_kpis(orders: list, finances: list, proformas: list, today: date) -> d
         "to_collect": float(to_collect),
         "advances_month": float(advances_month),
         "avg_ticket": round(avg_ticket, 2),
-        "avg_days": avg_days,
         "delivered_month": len(delivered_month),
-        "overdue_count": len(overdue),
-        "overdue_pct": overdue_pct,
-        "due_today_count": len(due_today),
-        "due_tomorrow_count": len(due_tomorrow),
-        "stale_pieces_count": len(stale),
-        "active_orders": len(active),
-        "mix_invoice": mix_invoice,
-        "mix_plain": mix_plain,
         "income_qr_month": float(income_qr),
         "income_plastic_month": float(income_plastic),
         "income_other_month": float(max(Decimal("0"), income_month - income_qr - income_plastic)),
-        "proformas_total": prof_total,
-        "proformas_converted": converted,
-        "proformas_conversion_pct": conversion,
     }
+
+
+def _load_workshop_orders(db):
+    return (
+        db.table("work_orders")
+        .select(
+            "id, ot_number, work_description, status, billing_type, total_amount, "
+            "price_charged, advance_amount, advance_recorded, qr_paid, qr_paid_amount, "
+            "estimated_delivery_date, entry_date, updated_at, clients(name)"
+        )
+        .execute()
+    )
+
+
+def _load_recent_finances(db, today: date) -> list:
+    year_start = date(today.year, 1, 1)
+    lookback = today - timedelta(days=90)
+    fin_from = min(year_start, lookback)
+    return (
+        db.table("finances")
+        .select("type, amount, category, date")
+        .gte("date", fin_from.isoformat())
+        .execute()
+    ).data or []
 
 
 @router.get("/stats")
 def get_dashboard_stats():
     db = get_supabase()
     today = date.today()
-    year_start = date(today.year, 1, 1)
-    lookback = today - timedelta(days=90)
-    fin_from = min(year_start, lookback)
 
     def q_clients():
         return db.table("clients").select("id", count="exact").execute()
 
     def q_orders():
-        return (
-            db.table("work_orders")
-            .select(
-                "id, ot_number, work_description, status, billing_type, total_amount, "
-                "price_charged, advance_amount, advance_recorded, qr_paid, qr_paid_amount, "
-                "estimated_delivery_date, entry_date, updated_at, clients(name)"
-            )
-            .execute()
-        )
-
-    def q_finances():
-        return (
-            db.table("finances")
-            .select("type, amount, category, date")
-            .gte("date", fin_from.isoformat())
-            .execute()
-        )
+        return _load_workshop_orders(db)
 
     def q_proformas():
         try:
@@ -286,11 +301,8 @@ def get_dashboard_stats():
         except Exception:
             return []
 
-    clients, orders_res, finances, proformas = in_parallel(
-        q_clients, q_orders, q_finances, q_proformas
-    )
+    clients, orders_res, proformas = in_parallel(q_clients, q_orders, q_proformas)
     orders = orders_res.data or []
-    finances = finances.data or []
 
     orders_by_status = {"en_proceso": 0, "terminado": 0, "entregado": 0}
     for o in orders:
@@ -334,13 +346,21 @@ def get_dashboard_stats():
         "stale_stored_pieces": stale_list[:20],
         "delivery_agenda": agenda,
         "alarms": alarms,
-        "kpis": _build_kpis(orders, finances, proformas, today),
-        "finance_trends": _finance_trends_from(finances, today),
+        "kpis": _workshop_kpis(orders, proformas, today),
     }
 
 
+@router.get("/finance-kpis")
+def get_finance_kpis(_user: AuthUser = Depends(require_permission(PERMISSION_FINANZAS_VER))):
+    db = get_supabase()
+    today = date.today()
+    orders = (_load_workshop_orders(db)).data or []
+    finances = _load_recent_finances(db, today)
+    return _money_kpis(orders, finances, today)
+
+
 @router.get("/finance-trends")
-def get_finance_trends():
+def get_finance_trends(_user: AuthUser = Depends(require_permission(PERMISSION_FINANZAS_VER))):
     db = get_supabase()
     today = date.today()
     lookback = (today - timedelta(days=90)).isoformat()

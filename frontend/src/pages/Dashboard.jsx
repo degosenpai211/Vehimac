@@ -12,6 +12,8 @@ import { useToast } from '../components/Toast'
 import { api, formatCurrency, formatDate, formatOT } from '../services/api'
 import { ORDER_STATUS } from '../utils/status'
 import { startAppTour } from '../tours/appTour'
+import { useAuth } from '../auth/AuthContext'
+import { can, PERMISSION_FINANZAS_VER } from '../auth/roles'
 import {
   isIosDevice,
   isStandalonePwa,
@@ -150,23 +152,44 @@ function AlarmGroup({ title, items, tone }) {
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
+  const [financeKpis, setFinanceKpis] = useState(null)
   const [trends, setTrends] = useState(null)
   const [loading, setLoading] = useState(true)
   const [notifyState, setNotifyState] = useState(notificationPermission())
   const [searchParams] = useSearchParams()
   const { toast } = useToast()
+  const { user } = useAuth()
+  const canSeeMoney = can(user, PERMISSION_FINANZAS_VER)
   const ios = isIosDevice()
   const standalone = isStandalonePwa()
-  const kpis = stats?.kpis || {}
+  const kpis = { ...(stats?.kpis || {}), ...(financeKpis || {}) }
   const alarms = stats?.alarms || {}
   const alarmCount = (alarms.overdue?.length || 0) + (alarms.due_today?.length || 0) + (alarms.due_tomorrow?.length || 0)
 
   useEffect(() => {
-    api.getStats()
-      .then((s) => { setStats(s); setTrends(s.finance_trends || null) })
-      .catch((err) => toast(err.message, 'error'))
-      .finally(() => setLoading(false))
-  }, [toast])
+    let cancelled = false
+    async function load() {
+      try {
+        const workshop = await api.getStats()
+        if (cancelled) return
+        setStats(workshop)
+        if (!canSeeMoney) return
+        const [money, chart] = await Promise.all([
+          api.getFinanceKpis(),
+          api.getFinanceTrends(),
+        ])
+        if (cancelled) return
+        setFinanceKpis(money)
+        setTrends(chart)
+      } catch (err) {
+        toast(err.message, 'error')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [toast, canSeeMoney])
 
   useEffect(() => {
     if (!stats?.delivery_agenda) return
@@ -191,7 +214,9 @@ export default function Dashboard() {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3" data-tour="inicio-title">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Inicio</h1>
-          <p className="text-slate-500 text-sm mt-1">Taller al día: alarmas, caja y entregas</p>
+          <p className="text-slate-500 text-sm mt-1">
+            {canSeeMoney ? 'Taller al día: alarmas, caja y entregas' : 'Taller al día: alarmas y entregas'}
+          </p>
         </div>
         {import.meta.env.DEV && (
           <button type="button" className="btn-secondary btn-sm shrink-0" onClick={() => startAppTour()}>
@@ -276,13 +301,17 @@ export default function Dashboard() {
       <div>
         <h2 className="font-semibold mb-3">KPIs del taller</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard title="Ingresos hoy" value={formatCurrency(kpis.income_today)} icon={Banknote} color="green" />
-          <StatCard title="Ingresos semana" value={formatCurrency(kpis.income_week)} icon={TrendingUp} color="green" />
-          <StatCard title="Ingresos mes" value={formatCurrency(kpis.income_month)} icon={TrendingUp} color="green" />
-          <StatCard title="Gastos mes" value={formatCurrency(kpis.expenses_month)} icon={Banknote} color="red" />
-          <StatCard title="Por cobrar" value={formatCurrency(kpis.to_collect)} subtitle="OTs no entregadas" icon={CircleDollarSign} color="amber" />
-          <StatCard title="Adelantos del mes" value={formatCurrency(kpis.advances_month)} icon={Banknote} />
-          <StatCard title="Ticket promedio" value={formatCurrency(kpis.avg_ticket)} subtitle={`${kpis.delivered_month || 0} OT entregadas este mes`} icon={Wrench} />
+          {canSeeMoney && (
+            <>
+              <StatCard title="Ingresos hoy" value={formatCurrency(kpis.income_today)} icon={Banknote} color="green" />
+              <StatCard title="Ingresos semana" value={formatCurrency(kpis.income_week)} icon={TrendingUp} color="green" />
+              <StatCard title="Ingresos mes" value={formatCurrency(kpis.income_month)} icon={TrendingUp} color="green" />
+              <StatCard title="Gastos mes" value={formatCurrency(kpis.expenses_month)} icon={Banknote} color="red" />
+              <StatCard title="Por cobrar" value={formatCurrency(kpis.to_collect)} subtitle="OTs no entregadas" icon={CircleDollarSign} color="amber" />
+              <StatCard title="Adelantos del mes" value={formatCurrency(kpis.advances_month)} icon={Banknote} />
+              <StatCard title="Ticket promedio" value={formatCurrency(kpis.avg_ticket)} subtitle={`${kpis.delivered_month || 0} OT entregadas este mes`} icon={Wrench} />
+            </>
+          )}
           <StatCard
             title="OTs atrasadas"
             value={kpis.overdue_count ?? 0}
@@ -295,13 +324,15 @@ export default function Dashboard() {
           <StatCard title="Órdenes activas" value={stats.active_orders} icon={Wrench} color="amber" />
           <StatCard title="Piezas +7 días" value={kpis.stale_pieces_count ?? stats.stored_pieces_count} icon={Package} color="amber" />
           <StatCard title="Clientes" value={stats.total_clients} icon={Users} />
-          <StatCard
-            title="QR vs el resto"
-            value={formatCurrency(kpis.income_qr_month)}
-            subtitle={`Otros ${formatCurrency(kpis.income_other_month)}`}
-            icon={CircleDollarSign}
-            color="green"
-          />
+          {canSeeMoney && (
+            <StatCard
+              title="QR vs el resto"
+              value={formatCurrency(kpis.income_qr_month)}
+              subtitle={`Otros ${formatCurrency(kpis.income_other_month)}`}
+              icon={CircleDollarSign}
+              color="green"
+            />
+          )}
           <StatCard
             title="Proformas → OT"
             value={`${kpis.proformas_conversion_pct ?? 0}%`}
@@ -317,11 +348,13 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <FinanceChart
-        trends={trends}
-        title="Ingresos y egresos"
-        subtitle="Hoy, esta semana y este mes. Tocá una barra para ver el detalle."
-      />
+      {canSeeMoney && (
+        <FinanceChart
+          trends={trends}
+          title="Ingresos y egresos"
+          subtitle="Hoy, esta semana y este mes. Tocá una barra para ver el detalle."
+        />
+      )}
 
       <AgendaList title="Pasado mañana" items={stats.delivery_agenda?.due_day_after} tone="blue" period="day_after" />
       <AgendaList title="Próxima semana" items={stats.delivery_agenda?.due_next_week} tone="slate" period="next_week" />

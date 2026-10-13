@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Package, Users, Wrench, DollarSign, Menu, X, UserCog, FileText
+  LayoutDashboard, Package, Users, Wrench, DollarSign, Menu, X, UserCog, FileText, LogOut, CircleUser
 } from 'lucide-react'
 import {
   dismissPendingFicha,
   getPendingFichas,
   subscribePendingFichas,
 } from '../utils/pendingFichas'
+import { useAuth } from '../auth/AuthContext'
+import { can, PERMISSION_FINANZAS_VER, ROLE_LABEL } from '../auth/roles'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Inicio' },
@@ -16,21 +18,28 @@ const navItems = [
   { to: '/equipo', icon: UserCog, label: 'Equipo' },
   { to: '/ordenes', icon: Wrench, label: 'Órdenes' },
   { to: '/proformas', icon: FileText, label: 'Proformas' },
-  { to: '/finanzas', icon: DollarSign, label: 'Finanzas' },
+  { to: '/finanzas', icon: DollarSign, label: 'Finanzas', permission: PERMISSION_FINANZAS_VER },
 ]
 
 const bottomItems = [
   { to: '/', icon: LayoutDashboard, label: 'Inicio' },
   { to: '/ordenes', icon: Wrench, label: 'Órdenes' },
   { to: '/proformas', icon: FileText, label: 'Proformas' },
-  { to: '/finanzas', icon: DollarSign, label: 'Finanzas' },
+  { to: '/finanzas', icon: DollarSign, label: 'Finanzas', permission: PERMISSION_FINANZAS_VER },
 ]
+
+function visibleItems(items, user) {
+  return items.filter((item) => !item.permission || can(user, item.permission))
+}
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [pendingFichas, setPendingFichas] = useState(() => getPendingFichas())
   const location = useLocation()
   const navigate = useNavigate()
+  const { user, logout } = useAuth()
+  const menu = visibleItems(navItems, user)
+  const mobileMenu = visibleItems(bottomItems, user)
 
   useEffect(() => subscribePendingFichas(setPendingFichas), [])
 
@@ -47,7 +56,7 @@ export default function Layout() {
   )
 
   return (
-    <div className="min-h-screen min-h-[100dvh] flex">
+    <div className="h-dvh flex overflow-hidden">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-40 lg:hidden"
@@ -56,7 +65,7 @@ export default function Layout() {
       )}
 
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-brand-900 text-white
+        fixed lg:static inset-y-0 left-0 z-50 w-64 shrink-0 h-full overflow-y-auto bg-brand-900 text-white flex flex-col
         transform transition-transform duration-200 ease-in-out
         pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
@@ -70,8 +79,8 @@ export default function Layout() {
             <X size={20} />
           </button>
         </div>
-        <nav className="p-3 space-y-1" data-tour="nav-menu">
-          {navItems.map(({ to, icon: Icon, label }) => (
+        <nav className="p-3 space-y-1 overflow-y-auto" data-tour="nav-menu">
+          {menu.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
@@ -91,9 +100,36 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
+        <div className="p-3 border-t border-brand-800 space-y-2">
+          <NavLink
+            to="/cuenta"
+            onClick={() => setSidebarOpen(false)}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2 rounded-lg ${
+                isActive ? 'bg-brand-700' : 'hover:bg-brand-800'
+              }`
+            }
+          >
+            <CircleUser size={18} className="text-brand-200 shrink-0" />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium truncate">{user?.name}</span>
+              <span className="block text-[11px] text-brand-300 truncate">
+                {ROLE_LABEL[user?.role] || user?.role}
+              </span>
+            </span>
+          </NavLink>
+          <button
+            type="button"
+            onClick={() => logout()}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-brand-200 hover:bg-brand-800 hover:text-white min-h-[44px]"
+          >
+            <LogOut size={18} />
+            Salir
+          </button>
+        </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3 lg:hidden pt-[max(0.75rem,env(safe-area-inset-top))]">
           <button type="button" onClick={() => setSidebarOpen(true)} className="p-2 -ml-2 rounded-lg hover:bg-slate-100 min-h-[44px] min-w-[44px]">
             <Menu size={22} />
@@ -129,14 +165,14 @@ export default function Layout() {
               </div>
             </div>
           )}
-          <main className="flex-1 p-4 lg:p-6 overflow-auto pb-[max(5.5rem,calc(4.25rem+env(safe-area-inset-bottom)))] lg:pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <main className="flex-1 min-h-0 p-4 lg:p-6 overflow-y-auto pb-[max(5.5rem,calc(4.25rem+env(safe-area-inset-bottom)))] lg:pb-[max(1rem,env(safe-area-inset-bottom))]">
             <Outlet />
           </main>
       </div>
 
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)]" data-tour="nav-mobile">
-        <div className="grid grid-cols-5">
-          {bottomItems.map(({ to, icon: Icon, label }) => (
+        <div className={`grid ${mobileMenu.length >= 4 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+          {mobileMenu.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}

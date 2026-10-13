@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth import AuthMiddleware
 from app.config import settings
 from app.database import get_supabase
-from app.routers import clients, dashboard, finances, mechanics, proformas, share, stored_pieces, work_orders
+from app.routers import auth, clients, dashboard, finances, mechanics, proformas, share, stored_pieces, work_orders
 
 app = FastAPI(
     title="Vehimac ERP",
@@ -11,6 +12,7 @@ app = FastAPI(
     version="2.0.0",
 )
 
+app.add_middleware(AuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -19,6 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api")
 app.include_router(clients.router, prefix="/api")
 app.include_router(mechanics.router, prefix="/api")
 app.include_router(work_orders.router, prefix="/api")
