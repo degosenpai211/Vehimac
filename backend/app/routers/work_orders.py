@@ -17,13 +17,9 @@ from app.schemas.work_order import (
 from app.services.billing import compute_billing, order_payable_total
 from app.services.orders import _next_ot_number, on_order_entregado, register_advance, register_qr_payment
 from app.services.photos import delete_photo, list_photos, photo_counts_by_order, upload_photo
+from app.utils.search import sanitize_search
 
 router = APIRouter(prefix="/work-orders", tags=["Órdenes de trabajo"])
-
-
-def _sanitize_search(term: str) -> str:
-    cleaned = term.replace(",", " ").replace("(", " ").replace(")", " ").replace("%", "").replace("_", " ")
-    return " ".join(cleaned.split())
 
 
 def _apply_order_filters(
@@ -47,7 +43,7 @@ def _apply_order_filters(
         if q.upper().startswith("OT") and q[2:].isdigit():
             query = query.eq("ot_number", int(q[2:]))
         else:
-            safe = _sanitize_search(q)
+            safe = sanitize_search(q)
             if safe:
                 or_parts = [
                     f"work_description.ilike.%{safe}%",
@@ -468,11 +464,12 @@ def update_work_order(order_id: UUID, order: WorkOrderUpdate):
         neto = Decimal(str(summary["price_charged"]))
         data.update({k: v for k, v in summary.items() if k != "price_charged"})
         data.update(_billing_fields(neto, billing_type))
-        _insert_pieces(db, oid, order.pieces)
         payable = Decimal(str(data["total_amount"]))
         if not old.get("advance_recorded"):
             requested = order.advance_amount if order.advance_amount is not None else Decimal(str(old.get("advance_amount", 0)))
             data["advance_amount"] = float(_resolve_advance(payable, requested))
+        # Recién después de validar: reemplazar piezas borra las anteriores.
+        _insert_pieces(db, oid, order.pieces)
     else:
         if order.billing_type is not None and not old.get("delivery_payment_recorded"):
             neto = Decimal(str(old.get("price_charged", 0)))
