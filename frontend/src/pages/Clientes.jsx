@@ -9,6 +9,22 @@ import { api, formatCurrency, formatDate, formatDateTime, formatPhone, whatsappU
 import { ORDER_STATUS } from '../utils/status'
 import { dismissPendingFicha } from '../utils/pendingFichas'
 
+const CLIENT_PAGE_SIZE = 200
+
+async function fetchEveryClientPage(query) {
+  const collected = []
+  let offset = 0
+  let total = 0
+  do {
+    const page = await api.getClients({ ...query, offset })
+    const items = Array.isArray(page?.items) ? page.items : []
+    collected.push(...items)
+    total = Number(page?.total) || collected.length
+    offset += CLIENT_PAGE_SIZE
+  } while (offset < total && items.length > 0)
+  return collected
+}
+
 const emptyAuto = () => ({ make: '', model: '', year: '' })
 
 const emptyForm = {
@@ -35,12 +51,12 @@ export default function Clientes() {
 
   const load = () => {
     setLoading(true)
-    const params = { sort_by: sortBy, sort_dir: sortDir }
-    if (searchDebounced) params.search = searchDebounced
-    if (hasStored === 'yes') params.has_stored_pieces = true
-    if (hasStored === 'no') params.has_stored_pieces = false
-    api.getClients(params)
-      .then((res) => setClients(res.items || res))
+    const query = { sort_by: sortBy, sort_dir: sortDir, limit: CLIENT_PAGE_SIZE }
+    if (searchDebounced) query.search = searchDebounced
+    if (hasStored === 'yes') query.has_stored_pieces = true
+    if (hasStored === 'no') query.has_stored_pieces = false
+    fetchEveryClientPage(query)
+      .then((items) => setClients(items))
       .catch((err) => toast(err.message, 'error'))
       .finally(() => setLoading(false))
   }
@@ -183,7 +199,9 @@ export default function Clientes() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Clientes</h1>
-          <p className="text-sm text-slate-500">Nombre, contacto y autos</p>
+          <p className="text-sm text-slate-500">
+            {loading ? 'Nombre, contacto y autos' : `${clients.length} clientes`}
+          </p>
         </div>
         <button onClick={openCreate} data-tour="nuevo-cliente" className="btn-primary"><Plus size={18} /> Nuevo cliente</button>
       </div>

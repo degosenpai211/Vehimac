@@ -345,3 +345,60 @@ def jobs_for_worker(items: list[dict], orders_by_id: dict, name: str, start: dat
                 "step": PROCESS_LABELS.get(step.get("id"), step.get("id") or ""),
             })
     return found[:20]
+
+
+ROLE_ORDER = ("mechanic", "designer", "admin")
+
+
+def salary_name_key(name: str | None) -> str:
+    return str(name or "").strip().lower()
+
+
+def combine_salary_people(rows: list[dict]) -> list[dict]:
+    grouped: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for row in rows or []:
+        key = salary_name_key(row.get("name"))
+        if not key:
+            continue
+        if key not in grouped:
+            order.append(key)
+            grouped[key] = []
+        grouped[key].append(row)
+    return [_one_paycheck(grouped[key]) for key in order]
+
+
+def salary_pay_targets(people: list[dict], roster: list[dict]) -> dict[str, str]:
+    targets: dict[str, str] = {}
+    for person in people:
+        main = str(person.get("id") or "")
+        key = salary_name_key(person.get("name"))
+        if not main or not key:
+            continue
+        targets[main] = main
+        for row in roster or []:
+            if salary_name_key(row.get("name")) == key and row.get("id"):
+                targets[str(row["id"])] = main
+    return targets
+
+
+def _one_paycheck(rows: list[dict]) -> dict:
+    bases: dict[str, float] = {}
+    role_ids: list[str] = []
+    for row in rows:
+        role = row.get("role") or "mechanic"
+        bases[role] = max(bases.get(role, 0.0), float(row.get("salary_base") or 0))
+        row_id = str(row.get("id") or "")
+        if row_id:
+            role_ids.append(row_id)
+    head = max(rows, key=lambda row: (float(row.get("salary_base") or 0), (row.get("role") or "") == "admin"))
+    person = dict(head)
+    person["salary_base"] = round(sum(bases.values()), 2)
+    person["role_ids"] = role_ids
+    person["roles"] = [role for role in ROLE_ORDER if role in bases]
+    if person["roles"] == ["admin"]:
+        person["salary_mode"] = "fixed"
+        return person
+    worker = next((row for row in rows if (row.get("role") or "mechanic") != "admin"), head)
+    person["salary_mode"] = worker.get("salary_mode") or "both"
+    return person

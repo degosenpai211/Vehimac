@@ -7,7 +7,7 @@ from decimal import Decimal
 from app.auth.deps import require_permission
 from app.auth.permissions import PERMISSION_FINANZAS_VER
 
-from app.database import get_supabase
+from app.database import fetch_all, get_supabase
 from app.schemas.finance import (
     FinanceCreate,
     FinanceResponse,
@@ -17,6 +17,7 @@ from app.schemas.finance import (
     SalaryAdvanceCreate,
     SalaryPayCreate,
 )
+from app.services.orders import release_order_payment
 from app.services.pl import (
     BY_ID,
     CATALOG,
@@ -34,6 +35,7 @@ from app.services.salary import (
     advance_fits,
     advances_in,
     as_start_date,
+    combine_salary_people,
     jobs_for_worker,
     leftover_base,
     matching_workers,
@@ -43,7 +45,9 @@ from app.services.salary import (
     periods_since,
     pick_period,
     recent_periods,
+    salary_pay_targets,
 )
+from app.utils.dates import today_bolivia
 
 router = APIRouter(
     prefix="/finances",
@@ -51,6 +55,8 @@ router = APIRouter(
     dependencies=[Depends(require_permission(PERMISSION_FINANZAS_VER))],
 )
 SALARY_CATEGORIES = ["Salarios", "Sueldos y salarios"]
+RENT_DESCRIPTION_SUFFIX = "(fijo)"
+PL_SERIES_LOOKBACK = 5
 
 
 @router.get("", response_model=list[FinanceResponse])
@@ -61,25 +67,26 @@ def list_finances(
     category: str | None = Query(None),
 ):
     db = get_supabase()
-    query = db.table("finances").select("*").order("date", desc=True)
 
-    if type:
-        query = query.eq("type", type.value)
-    if date_from:
-        query = query.gte("date", date_from.isoformat())
-    if date_to:
-        query = query.lte("date", date_to.isoformat())
-    if category:
-        query = query.eq("category", category)
+    def movements():
+        query = db.table("finances").select("*").order("date", desc=True)
+        if type:
+            query = query.eq("type", type.value)
+        if date_from:
+            query = query.gte("date", date_from.isoformat())
+        if date_to:
+            query = query.lte("date", date_to.isoformat())
+        if category:
+            query = query.eq("category", category)
+        return query
 
-    result = query.execute()
-    return result.data or []
+    return fetch_all(movements)
 
 
 @router.get("/summary/periods")
 def period_summaries():
     from datetime import timedelta
-    today = date.today()
+    today = today_bolivia()
     week_start = today - timedelta(days=today.weekday())
     if today.month == 1:
         last_month_start = date(today.year - 1, 12, 1)
@@ -98,16 +105,15 @@ def period_summaries():
     for key, p in periods.items():
         d_from = today.isoformat() if key == "today" else (week_start.isoformat() if key == "week" else last_month_start.isoformat())
         d_to = today.isoformat() if key != "last_month" else last_month_end.isoformat()
-        adv = (
-            db.table("finances")
+        adv = fetch_all(
+            lambda: db.table("finances")
             .select("amount")
             .eq("type", "ingreso")
             .eq("category", "Adelantos")
             .gte("date", d_from)
             .lte("date", d_to)
-            .execute()
         )
-        total_adv = sum(Decimal(str(r["amount"])) for r in (adv.data or []))
+        total_adv = sum(Decimal(str(r["amount"])) for r in adv)
         p_dict = p.model_dump(mode="json")
         p_dict["total_adelantos"] = float(total_adv)
         periods[key] = p_dict
@@ -117,13 +123,13 @@ def period_summaries():
 
 @router.get("/summary/daily", response_model=FinanceSummary)
 def daily_summary(target_date: date | None = Query(None)):
-    d = target_date or date.today()
+    d = target_date or today_bolivia()
     return _compute_summary(d.isoformat(), d.isoformat(), f"Día {d.strftime('%d/%m/%Y')}")
 
 
 @router.get("/summary/monthly", response_model=FinanceSummary)
 def monthly_summary(year: int | None = Query(None), month: int | None = Query(None)):
-    today = date.today()
+    today = today_bolivia()
     y = year or today.year
     m = month or today.month
     date_from = date(y, m, 1)
@@ -140,14 +146,9 @@ def monthly_summary(year: int | None = Query(None), month: int | None = Query(No
 
 def _compute_summary(date_from: str, date_to: str, period: str) -> FinanceSummary:
     db = get_supabase()
-    result = (
-        db.table("finances")
-        .select("*")
-        .gte("date", date_from)
-        .lte("date", date_to)
-        .execute()
+    records = fetch_all(
+        lambda: db.table("finances").select("*").gte("date", date_from).lte("date", date_to)
     )
-    records = result.data or []
 
     ingresos = [r for r in records if r["type"] == "ingreso"]
     gastos = [r for r in records if r["type"] == "gasto"]
@@ -185,7 +186,7 @@ def _insert_finance(db, data: dict) -> dict:
 @router.get("/salaries")
 def salary_board():
     db = get_supabase()
-    today = date.today()
+    today = today_bolivia()
     try:
         mechanics = (
             db.table("mechanics")
@@ -201,15 +202,14 @@ def salary_board():
         row.setdefault("salary_mode", "both")
         row.setdefault("salary_period", "monthly")
         row.setdefault("pay_day", 30)
+    roster = [{"id": row.get("id"), "name": row.get("name")} for row in mechanics]
+    mechanics = combine_salary_people(mechanics)
+    pay_targets = salary_pay_targets(mechanics, roster)
 
     try:
-        pays = (
-            db.table("finances")
-            .select("*")
-            .eq("type", "gasto")
-            .in_("category", SALARY_CATEGORIES)
-            .execute()
-        ).data or []
+        pays = fetch_all(
+            lambda: db.table("finances").select("*").eq("type", "gasto").in_("category", SALARY_CATEGORIES)
+        )
     except Exception:
         pays = []
 
@@ -225,9 +225,9 @@ def salary_board():
         d = str(p.get("date") or "")[:10]
         if month_start.isoformat() <= d <= month_end.isoformat():
             month_total += amt
-        mid = p.get("mechanic_id")
+        mid = pay_targets.get(str(p.get("mechanic_id") or ""), "")
         if mid:
-            pays_by_mechanic.setdefault(str(mid), []).append(p)
+            pays_by_mechanic.setdefault(mid, []).append(p)
 
     for pay in pays:
         if pay.get("mechanic_id"):
@@ -239,12 +239,11 @@ def salary_board():
 
     since = (today - timedelta(days=60)).isoformat()
     try:
-        orders = (
-            db.table("work_orders")
+        orders = fetch_all(
+            lambda: db.table("work_orders")
             .select("id, ot_number, work_description, updated_at")
             .gte("updated_at", since)
-            .execute()
-        ).data or []
+        )
     except Exception:
         orders = []
     orders_by_id = {o["id"]: o for o in orders}
@@ -265,9 +264,8 @@ def salary_board():
     due_soon = 0
     for m in mechanics:
         mid = str(m["id"])
-        mode = m.get("salary_mode") or "both"
-        if (m.get("role") or "") == "admin":
-            mode = "fixed"
+        roles = m.get("roles") or [m.get("role") or "mechanic"]
+        mode = "fixed" if roles == ["admin"] else (m.get("salary_mode") or "both")
         period_type = m.get("salary_period") or "monthly"
         pay_day = m.get("pay_day")
         base = float(m.get("salary_base") or 0)
@@ -310,7 +308,7 @@ def salary_board():
         if status == "en_plazo":
             due_soon += 1
         jobs = []
-        if (m.get("role") or "mechanic") != "admin":
+        if any(role != "admin" for role in roles):
             jobs = jobs_for_worker(
                 items,
                 orders_by_id,
@@ -329,6 +327,7 @@ def salary_board():
             "id": m["id"],
             "name": m.get("name"),
             "role": m.get("role") or "mechanic",
+            "roles": roles,
             "salary_base": base,
             "salary_mode": mode,
             "salary_period": period_type,
@@ -373,8 +372,10 @@ def salary_board():
 def pay_salary(body: SalaryPayCreate):
     db = get_supabase()
     person = _mechanic_named(db, body.mechanic_id)
-    mode = _mechanic_salary_mode(person)
-    salary_base = float(person.get("salary_base") or 0)
+    profile = _salary_profile(db, person)
+    roles = profile.get("roles") or [profile.get("role") or "mechanic"]
+    mode = "fixed" if roles == ["admin"] else (profile.get("salary_mode") or "both")
+    salary_base = float(profile.get("salary_base") or 0)
     already = _salary_paid_in_period(db, person, body.period_key)
     leftover = leftover_base(salary_base, already) if mode != "per_job" else 0.0
     base_amount = float(body.base_amount or 0)
@@ -396,8 +397,8 @@ def pay_salary(body: SalaryPayCreate):
         "category": "Sueldos y salarios",
         "amount": float(total),
         "description": f"Salario {person.get('name')} ({kind})",
-        "date": (body.date or date.today()).isoformat(),
-        "mechanic_id": str(body.mechanic_id),
+        "date": (body.date or today_bolivia()).isoformat(),
+        "mechanic_id": str(profile.get("id") or body.mechanic_id),
         "salary_period_key": body.period_key,
     }
     return _insert_finance(db, data)
@@ -416,10 +417,37 @@ def _mechanic_named(db, mechanic_id: UUID) -> dict:
     return mechanic.data[0]
 
 
-def _mechanic_salary_mode(person: dict) -> str:
-    if (person.get("role") or "") == "admin":
-        return "fixed"
-    return person.get("salary_mode") or "both"
+def _same_name_ids(db, person: dict) -> set[str]:
+    name = str(person.get("name") or "").strip()
+    key = name.lower()
+    rows = (
+        db.table("mechanics")
+        .select("id, name")
+        .eq("active", True)
+        .ilike("name", name)
+        .execute()
+    ).data or []
+    ids = {str(row["id"]) for row in rows if str(row.get("name") or "").strip().lower() == key}
+    own = str(person.get("id") or "")
+    if own:
+        ids.add(own)
+    return ids
+
+
+def _salary_profile(db, person: dict) -> dict:
+    name = str(person.get("name") or "").strip()
+    key = name.lower()
+    rows = (
+        db.table("mechanics")
+        .select("*")
+        .eq("active", True)
+        .ilike("name", name)
+        .execute()
+    ).data or []
+    same = [row for row in rows if str(row.get("name") or "").strip().lower() == key]
+    if not same:
+        same = [person]
+    return combine_salary_people(same)[0]
 
 
 def _periods_for_person(person: dict, today: date) -> list[dict]:
@@ -445,25 +473,24 @@ def _orphan_owner_id(description: str | None, team: list[dict]) -> str:
 
 
 def _salary_paid_in_period(db, person: dict, period_key: str) -> float:
-    pays = (
-        db.table("finances")
+    pays = fetch_all(
+        lambda: db.table("finances")
         .select("amount, description, salary_period_key, mechanic_id, date")
         .eq("type", "gasto")
         .in_("category", SALARY_CATEGORIES)
-        .execute()
-    ).data or []
+    )
     team = (
         db.table("mechanics")
         .select("id, name")
         .eq("active", True)
         .execute()
     ).data or []
-    periods = _periods_for_person(person, date.today())
-    person_id = str(person.get("id") or "")
+    periods = _periods_for_person(person, today_bolivia())
+    family = _same_name_ids(db, person)
     total = 0.0
     for pay in pays:
         owner = str(pay.get("mechanic_id") or "") or _orphan_owner_id(pay.get("description"), team)
-        if owner != person_id:
+        if owner not in family:
             continue
         if pay_period_key(pay, periods) == period_key:
             total += float(pay.get("amount") or 0)
@@ -474,13 +501,15 @@ def _salary_paid_in_period(db, person: dict, period_key: str) -> float:
 def pay_salary_advance(body: SalaryAdvanceCreate):
     db = get_supabase()
     person = _mechanic_named(db, body.mechanic_id)
-    mode = _mechanic_salary_mode(person)
+    profile = _salary_profile(db, person)
+    roles = profile.get("roles") or [profile.get("role") or "mechanic"]
+    mode = "fixed" if roles == ["admin"] else (profile.get("salary_mode") or "both")
     if mode == "per_job":
         raise HTTPException(
             status_code=400,
             detail="Este integrante no tiene sueldo fijo para adelantar",
         )
-    base = float(person.get("salary_base") or 0)
+    base = float(profile.get("salary_base") or 0)
     already = _salary_paid_in_period(db, person, body.period_key)
     amount = float(body.amount)
     leftover = leftover_base(base, already)
@@ -506,8 +535,8 @@ def pay_salary_advance(body: SalaryAdvanceCreate):
         "category": "Sueldos y salarios",
         "amount": amount,
         "description": f"{ADVANCE_DESCRIPTION_PREFIX}{person.get('name')}".rstrip(),
-        "date": (body.date or date.today()).isoformat(),
-        "mechanic_id": str(body.mechanic_id),
+        "date": (body.date or today_bolivia()).isoformat(),
+        "mechanic_id": str(profile.get("id") or body.mechanic_id),
         "salary_period_key": body.period_key,
     }
     return _insert_finance(db, data)
@@ -529,10 +558,19 @@ def _finance_settings(db) -> dict:
 
 
 def _period_range(grain: str, offset: int, today: date | None = None) -> tuple[date, date]:
-    today = today or date.today()
+    today = today or today_bolivia()
     if grain == "month":
         return month_bounds(today, offset)
     return week_bounds(today, offset)
+
+
+def _finances_between(db, start: date, end: date) -> list:
+    return fetch_all(
+        lambda: db.table("finances")
+        .select("type, amount, category, date")
+        .gte("date", start.isoformat())
+        .lte("date", end.isoformat())
+    )
 
 
 @router.get("/catalog")
@@ -577,13 +615,42 @@ def pay_rent(which: int):
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Definí el monto fijo del alquiler en Ajustes")
     label = f"Alquiler {which}"
-    return _insert_finance(db, {
+    today = today_bolivia()
+    week_start, week_end = week_bounds(today, 0)
+
+    def loaded_this_week() -> list:
+        return (
+            db.table("finances")
+            .select("id")
+            .eq("type", "gasto")
+            .eq("category", label)
+            .like("description", f"%{RENT_DESCRIPTION_SUFFIX}")
+            .gte("date", week_start.isoformat())
+            .lte("date", week_end.isoformat())
+            .order("created_at")
+            .order("id")
+            .execute()
+        ).data or []
+
+    already_loaded = HTTPException(
+        status_code=409,
+        detail=f"{label} ya está cargado esta semana. Si fue otro pago, cargalo como egreso en Movimientos.",
+    )
+    if loaded_this_week():
+        raise already_loaded
+    created = _insert_finance(db, {
         "type": "gasto",
         "category": label,
         "amount": amount,
-        "description": f"{label} (fijo)",
-        "date": date.today().isoformat(),
+        "description": f"{label} {RENT_DESCRIPTION_SUFFIX}",
+        "date": today.isoformat(),
     })
+    # Dos clics a la vez pasan los dos el control de arriba: queda solo el primero que entró.
+    first = loaded_this_week()[0]
+    if first["id"] != created["id"]:
+        db.table("finances").delete().eq("id", created["id"]).execute()
+        raise already_loaded
+    return created
 
 
 @router.get("/pl")
@@ -594,21 +661,17 @@ def profit_and_loss(
     if grain not in ("week", "month"):
         raise HTTPException(status_code=400, detail="grain debe ser week o month")
     db = get_supabase()
-    today = date.today()
+    today = today_bolivia()
     start, end = _period_range(grain, offset, today)
     settings = _finance_settings(db)
 
-    records = (db.table("finances").select("type, amount, category, date").execute()).data or []
+    # Solo el período pedido y los anteriores que usa el gráfico, no toda la historia.
+    series_start, _ = _period_range(grain, offset - PL_SERIES_LOOKBACK, today)
+    records = _finances_between(db, series_start, end)
     totals = {c["id"]: 0.0 for c in CATALOG}
-    lifetime_in = 0.0
-    lifetime_out = 0.0
     for r in records:
         amt = money(r.get("amount"))
         tipo = r.get("type")
-        if tipo == "ingreso":
-            lifetime_in += amt
-        else:
-            lifetime_out += amt
         d = str(r.get("date") or "")[:10]
         if not (start.isoformat() <= d <= end.isoformat()):
             continue
@@ -652,8 +715,7 @@ def profit_and_loss(
         groups.append({"id": g["id"], "label": g["label"], "total": round(sub, 2), "rows": rows})
 
     series = []
-    look = 5
-    for i in range(-look, 1):
+    for i in range(-PL_SERIES_LOOKBACK, 1):
         s, e = _period_range(grain, offset + i, today)
         ing = 0.0
         egr = 0.0
@@ -683,7 +745,6 @@ def profit_and_loss(
         "total_egresos": round(total_egresos, 2),
         "resultado": round(total_ingresos - total_egresos, 2),
         "iva_facturado": round(iva_facturado, 2),
-        "efectivo": round(settings["cash_opening"] + lifetime_in - lifetime_out, 2),
         "cash_opening": settings["cash_opening"],
         "rent_1": settings["rent_1"],
         "rent_2": settings["rent_2"],
@@ -705,7 +766,7 @@ def create_finance(finance: FinanceCreate):
     db = get_supabase()
     data = finance.model_dump(mode="json")
     if not data.get("date"):
-        data["date"] = date.today().isoformat()
+        data["date"] = today_bolivia().isoformat()
     if data.get("category") in SALARY_CATEGORIES and not data.get("mechanic_id"):
         raise HTTPException(
             status_code=400,
@@ -720,3 +781,4 @@ def delete_finance(finance_id: UUID):
     result = db.table("finances").delete().eq("id", str(finance_id)).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Registro no encontrado")
+    release_order_payment(db, result.data[0])

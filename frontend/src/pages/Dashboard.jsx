@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   Users, Wrench, Package, Clock, AlertTriangle, Bell, Share, Map,
-  Banknote, TrendingUp, CircleDollarSign, Timer,
+  Banknote, TrendingUp, CircleDollarSign, Timer, FileDown,
 } from 'lucide-react'
 import StatCard from '../components/StatCard'
 import AgendaList from '../components/AgendaList'
@@ -13,7 +13,8 @@ import { api, formatCurrency, formatDate, formatOT } from '../services/api'
 import { ORDER_STATUS } from '../utils/status'
 import { startAppTour } from '../tours/appTour'
 import { useAuth } from '../auth/AuthContext'
-import { can, PERMISSION_FINANZAS_VER } from '../auth/roles'
+import { can, PERMISSION_FINANZAS_VER, ROLE_ADMIN } from '../auth/roles'
+import { downloadTextPdf } from '../utils/kpiPdf'
 import {
   isIosDevice,
   isStandalonePwa,
@@ -160,6 +161,7 @@ export default function Dashboard() {
   const { toast } = useToast()
   const { user } = useAuth()
   const canSeeMoney = can(user, PERMISSION_FINANZAS_VER)
+  const isAdmin = user?.role === ROLE_ADMIN
   const ios = isIosDevice()
   const standalone = isStandalonePwa()
   const kpis = { ...(stats?.kpis || {}), ...(financeKpis || {}) }
@@ -209,6 +211,43 @@ export default function Dashboard() {
   if (loading) return <Loading />
   if (!stats) return <p className="text-red-600">Error al cargar estadísticas</p>
 
+  const exportKpis = () => {
+    const lines = []
+    if (canSeeMoney) {
+      lines.push(
+        `Ingresos hoy: ${formatCurrency(kpis.income_today)}`,
+        `Ingresos semana: ${formatCurrency(kpis.income_week)}`,
+        `Ingresos mes: ${formatCurrency(kpis.income_month)}`,
+        `Gastos mes: ${formatCurrency(kpis.expenses_month)}`,
+        `Por cobrar: ${formatCurrency(kpis.to_collect)}`,
+        `Adelantos del mes: ${formatCurrency(kpis.advances_month)}`,
+        `Ticket promedio: ${formatCurrency(kpis.avg_ticket)} (${kpis.delivered_month || 0} OT entregadas este mes)`,
+      )
+    }
+    lines.push(
+      `OTs atrasadas: ${kpis.overdue_count ?? 0}`,
+      `Se entregan hoy: ${kpis.due_today_count ?? 0}`,
+      `Se entregan mañana: ${kpis.due_tomorrow_count ?? 0}`,
+      `Órdenes activas: ${stats.active_orders ?? 0}`,
+      `Piezas +7 días: ${kpis.stale_pieces_count ?? stats.stored_pieces_count ?? 0}`,
+      `Clientes: ${stats.total_clients ?? 0}`,
+    )
+    if (canSeeMoney) {
+      lines.push(`QR vs el resto: ${formatCurrency(kpis.income_qr_month)} (otros ${formatCurrency(kpis.income_other_month)})`)
+    }
+    lines.push(
+      `Proformas → OT: ${kpis.proformas_conversion_pct ?? 0}% (${kpis.proformas_converted || 0} de ${kpis.proformas_total || 0})`,
+      `Días promedio: ${kpis.avg_days ?? 0}`,
+    )
+    const today = new Date().toLocaleDateString('es-BO')
+    downloadTextPdf({
+      title: 'KPIs de Inicio',
+      subtitle: today,
+      lines,
+      filename: 'kpis-inicio.pdf',
+    })
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3" data-tour="inicio-title">
@@ -218,11 +257,18 @@ export default function Dashboard() {
             {canSeeMoney ? 'Taller al día: alarmas, caja y entregas' : 'Taller al día: alarmas y entregas'}
           </p>
         </div>
-        {import.meta.env.DEV && (
-          <button type="button" className="btn-secondary btn-sm shrink-0" onClick={() => startAppTour()}>
-            <Map size={16} /> Probar tour
-          </button>
-        )}
+        <div className="flex gap-2 shrink-0">
+          {isAdmin && (
+            <button type="button" className="btn-secondary btn-sm" onClick={exportKpis}>
+              <FileDown size={16} /> Exportar PDF
+            </button>
+          )}
+          {import.meta.env.DEV && (
+            <button type="button" className="btn-secondary btn-sm" onClick={() => startAppTour()}>
+              <Map size={16} /> Probar tour
+            </button>
+          )}
+        </div>
       </div>
 
       {ios && !standalone && (

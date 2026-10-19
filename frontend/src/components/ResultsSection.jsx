@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import FinanceChart from './FinanceChart'
 import { useToast } from './Toast'
 import { api, formatCurrency } from '../services/api'
+import { downloadTextPdf } from '../utils/kpiPdf'
 
 function blank(amount) {
   if (!amount) return <span className="text-slate-300">—</span>
@@ -18,6 +19,7 @@ export default function ResultsSection({ onChanged }) {
   const [rent1, setRent1] = useState('')
   const [rent2, setRent2] = useState('')
   const [saving, setSaving] = useState(false)
+  const [chargingRent, setChargingRent] = useState(false)
   const { toast } = useToast()
 
   const load = async () => {
@@ -56,6 +58,8 @@ export default function ResultsSection({ onChanged }) {
   }
 
   const chargeRent = async (which) => {
+    if (chargingRent) return
+    setChargingRent(true)
     try {
       await api.payRent(which)
       toast(`Alquiler ${which} registrado`, 'success')
@@ -63,12 +67,35 @@ export default function ResultsSection({ onChanged }) {
       onChanged?.()
     } catch (err) {
       toast(err.message, 'error')
+    } finally {
+      setChargingRent(false)
     }
   }
 
   const switchGrain = (next) => {
     setGrain(next)
     setOffset(0)
+  }
+
+  const exportCurrent = () => {
+    if (!data) return
+    const lines = []
+    for (const group of data.groups || []) {
+      lines.push(group.label)
+      for (const row of group.rows || []) {
+        lines.push(`${row.label}: ${formatCurrency(row.amount)}`)
+      }
+      lines.push(`Total ${group.label}: ${formatCurrency(group.total)}`)
+      lines.push('')
+    }
+    lines.push(`Resultado del período: ${formatCurrency(data.resultado)}`)
+    lines.push(`IVA facturado: ${formatCurrency(data.iva_facturado)}`)
+    downloadTextPdf({
+      title: 'KPIs de Finanzas',
+      subtitle: data.label || '',
+      lines,
+      filename: 'kpis-finanzas.pdf',
+    })
   }
 
   return (
@@ -115,9 +142,14 @@ export default function ResultsSection({ onChanged }) {
           <div className="card overflow-hidden">
             <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
               <p className="text-sm font-semibold">Estado de resultados</p>
-              <button type="button" className="text-xs font-semibold text-brand-700 min-h-[44px] px-2" onClick={() => setSettingsOpen((v) => !v)}>
-                {settingsOpen ? 'Cerrar ajustes' : 'Alquileres'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button type="button" className="text-xs font-semibold text-brand-700 min-h-[44px] px-2" onClick={exportCurrent}>
+                  Exportar PDF
+                </button>
+                <button type="button" className="text-xs font-semibold text-brand-700 min-h-[44px] px-2" onClick={() => setSettingsOpen((v) => !v)}>
+                  {settingsOpen ? 'Cerrar ajustes' : 'Alquileres'}
+                </button>
+              </div>
             </div>
             {settingsOpen && (
               <form onSubmit={saveSettings} className="p-3 border-b border-slate-100 grid sm:grid-cols-2 gap-2">
@@ -151,7 +183,8 @@ export default function ResultsSection({ onChanged }) {
                         {row.source === 'rent' && (row.id === 'alquiler_1' ? data.rent_1 : data.rent_2) > 0 && (
                           <button
                             type="button"
-                            className="text-[11px] font-semibold text-brand-700 min-h-[36px]"
+                            className="text-[11px] font-semibold text-brand-700 min-h-[36px] disabled:opacity-50"
+                            disabled={chargingRent}
                             onClick={() => chargeRent(row.id === 'alquiler_1' ? 1 : 2)}
                           >
                             Cargar

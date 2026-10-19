@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends
 from app.auth.deps import require_permission
 from app.auth.permissions import PERMISSION_FINANZAS_VER
 from app.auth.user import AuthUser
-from app.database import get_supabase, in_parallel
+from app.database import fetch_all, get_supabase, in_parallel
+from app.utils.dates import today_bolivia
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -260,15 +261,13 @@ def _money_kpis(orders: list, finances: list, today: date) -> dict:
     }
 
 
-def _load_workshop_orders(db):
-    return (
-        db.table("work_orders")
-        .select(
+def _load_workshop_orders(db) -> list:
+    return fetch_all(
+        lambda: db.table("work_orders").select(
             "id, ot_number, work_description, status, billing_type, total_amount, "
             "price_charged, advance_amount, advance_recorded, qr_paid, qr_paid_amount, "
             "estimated_delivery_date, entry_date, updated_at, clients(name)"
         )
-        .execute()
     )
 
 
@@ -276,18 +275,15 @@ def _load_recent_finances(db, today: date) -> list:
     year_start = date(today.year, 1, 1)
     lookback = today - timedelta(days=90)
     fin_from = min(year_start, lookback)
-    return (
-        db.table("finances")
-        .select("type, amount, category, date")
-        .gte("date", fin_from.isoformat())
-        .execute()
-    ).data or []
+    return fetch_all(
+        lambda: db.table("finances").select("type, amount, category, date").gte("date", fin_from.isoformat())
+    )
 
 
 @router.get("/stats")
 def get_dashboard_stats():
     db = get_supabase()
-    today = date.today()
+    today = today_bolivia()
 
     def q_clients():
         return db.table("clients").select("id", count="exact").execute()
@@ -301,8 +297,7 @@ def get_dashboard_stats():
         except Exception:
             return []
 
-    clients, orders_res, proformas = in_parallel(q_clients, q_orders, q_proformas)
-    orders = orders_res.data or []
+    clients, orders, proformas = in_parallel(q_clients, q_orders, q_proformas)
 
     orders_by_status = {"en_proceso": 0, "terminado": 0, "entregado": 0}
     for o in orders:
@@ -353,8 +348,8 @@ def get_dashboard_stats():
 @router.get("/finance-kpis")
 def get_finance_kpis(_user: AuthUser = Depends(require_permission(PERMISSION_FINANZAS_VER))):
     db = get_supabase()
-    today = date.today()
-    orders = (_load_workshop_orders(db)).data or []
+    today = today_bolivia()
+    orders = _load_workshop_orders(db)
     finances = _load_recent_finances(db, today)
     return _money_kpis(orders, finances, today)
 
@@ -362,13 +357,9 @@ def get_finance_kpis(_user: AuthUser = Depends(require_permission(PERMISSION_FIN
 @router.get("/finance-trends")
 def get_finance_trends(_user: AuthUser = Depends(require_permission(PERMISSION_FINANZAS_VER))):
     db = get_supabase()
-    today = date.today()
+    today = today_bolivia()
     lookback = (today - timedelta(days=90)).isoformat()
-    records = (
-        db.table("finances")
-        .select("type, amount, date")
-        .gte("date", lookback)
-        .lte("date", today.isoformat())
-        .execute()
-    ).data or []
+    records = fetch_all(
+        lambda: db.table("finances").select("type, amount, date").gte("date", lookback).lte("date", today.isoformat())
+    )
     return _finance_trends_from(records, today)

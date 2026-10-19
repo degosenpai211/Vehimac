@@ -219,5 +219,54 @@ class AdvanceTests(TestCase):
         self.assertEqual(pay_period_key(current, periods), "w:2026-09-28")
 
 
+class OnePaycheckTests(TestCase):
+    def test_three_roles_add_into_one_salary(self):
+        from app.services.salary import combine_salary_people
+
+        rows = combine_salary_people([
+            {"id": "m", "name": "Anghelo Ureña", "role": "mechanic", "salary_base": 1000, "salary_mode": "both"},
+            {"id": "d", "name": "anghelo ureña", "role": "designer", "salary_base": 800, "salary_mode": "both"},
+            {"id": "a", "name": "Anghelo Ureña", "role": "admin", "salary_base": 500, "salary_mode": "fixed"},
+        ])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["salary_base"], 2300.0)
+        self.assertEqual(rows[0]["roles"], ["mechanic", "designer", "admin"])
+        self.assertEqual(rows[0]["id"], "m")
+        self.assertEqual(rows[0]["salary_mode"], "both")
+
+    def test_same_role_keeps_the_higher_base(self):
+        from app.services.salary import combine_salary_people
+
+        rows = combine_salary_people([
+            {"id": "1", "name": "Ana", "role": "mechanic", "salary_base": 2165},
+            {"id": "2", "name": "Ana", "role": "mechanic", "salary_base": 1000},
+        ])
+        self.assertEqual(rows[0]["salary_base"], 2165.0)
+
+    def test_different_people_stay_separate(self):
+        from app.services.salary import combine_salary_people
+
+        rows = combine_salary_people([
+            {"id": "1", "name": "Ana", "role": "mechanic", "salary_base": 100},
+            {"id": "2", "name": "Luis", "role": "designer", "salary_base": 200},
+        ])
+        self.assertEqual([row["name"] for row in rows], ["Ana", "Luis"])
+
+    def test_old_ficha_payment_counts_for_the_same_person(self):
+        from app.services.salary import combine_salary_people, salary_pay_targets
+
+        people = combine_salary_people([
+            {"id": "m", "name": "Anghelo", "role": "mechanic", "salary_base": 0},
+            {"id": "a", "name": "Anghelo", "role": "admin", "salary_base": 2165},
+        ])
+        targets = salary_pay_targets(people, [
+            {"id": "m", "name": "Anghelo"},
+            {"id": "a", "name": "Anghelo"},
+            {"id": "old", "name": "Anghelo"},
+        ])
+        self.assertEqual(targets["old"], "a")
+        self.assertEqual(targets["m"], "a")
+
+
 if __name__ == "__main__":
     main()

@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from decimal import Decimal
 
-from app.database import fetch_in, get_supabase, in_parallel
+from app.database import fetch_all, fetch_in, get_supabase, in_parallel
 from app.schemas.work_order import (
     BillingType,
     OrderItemCreate,
@@ -17,13 +17,12 @@ from app.schemas.work_order import (
 from app.services.billing import compute_billing, order_payable_total
 from app.services.orders import _next_ot_number, on_order_entregado, register_advance, register_qr_payment
 from app.services.photos import delete_photo, list_photos, photo_counts_by_order, upload_photo
+from app.utils.dates import today_bolivia
+from app.utils.search import sanitize_search
 
 router = APIRouter(prefix="/work-orders", tags=["Órdenes de trabajo"])
 
-
-def _sanitize_search(term: str) -> str:
-    cleaned = term.replace(",", " ").replace("(", " ").replace(")", " ").replace("%", "").replace("_", " ")
-    return " ".join(cleaned.split())
+KANBAN_DELIVERED_DAYS = 30
 
 
 def _apply_order_filters(
@@ -47,7 +46,7 @@ def _apply_order_filters(
         if q.upper().startswith("OT") and q[2:].isdigit():
             query = query.eq("ot_number", int(q[2:]))
         else:
-            safe = _sanitize_search(q)
+            safe = sanitize_search(q)
             if safe:
                 or_parts = [
                     f"work_description.ilike.%{safe}%",
@@ -192,7 +191,7 @@ def _attach_vehicles(db, orders: list[dict]) -> list[dict]:
 def _matches_period(order: dict, period: str | None) -> bool:
     if not period or period == "all":
         return True
-    today = date.today()
+    today = today_bolivia()
     entry = order.get("entry_date")
     delivery = order.get("estimated_delivery_date")
     if isinstance(entry, str):
@@ -344,18 +343,25 @@ def get_kanban_board(
     delivery_to: str | None = Query(None),
 ):
     db = get_supabase()
-    query = db.table("work_orders").select("*, clients(id, name, phone, whatsapp)").order("ot_number", desc=True)
-    query = _apply_order_filters(
-        db,
-        query,
-        search=search,
-        entry_from=entry_from,
-        entry_to=entry_to,
-        delivery_from=delivery_from,
-        delivery_to=delivery_to,
-    )
-    result = query.execute()
-    prepared = [_enrich_order(raw) for raw in (result.data or [])]
+    # Sin búsqueda ni filtros, las entregadas viejas no se traen: para verlas hay que buscarlas.
+    unfiltered = not (search or entry_from or entry_to or delivery_from or delivery_to) and period in (None, "all")
+    delivered_since = (today_bolivia() - timedelta(days=KANBAN_DELIVERED_DAYS)).isoformat()
+
+    def board_orders():
+        query = db.table("work_orders").select("*, clients(id, name, phone, whatsapp)").order("ot_number", desc=True)
+        if unfiltered:
+            query = query.or_(f"status.neq.entregado,updated_at.gte.{delivered_since}")
+        return _apply_order_filters(
+            db,
+            query,
+            search=search,
+            entry_from=entry_from,
+            entry_to=entry_to,
+            delivery_from=delivery_from,
+            delivery_to=delivery_to,
+        )
+
+    prepared = [_enrich_order(raw) for raw in fetch_all(board_orders)]
     filtered = [o for o in prepared if _matches_period(o, period)]
     if filtered:
         in_parallel(
@@ -419,6 +425,7 @@ def create_work_order(order: WorkOrderCreate):
         "mechanic": summary["mechanic"],
         "designer": summary.get("designer"),
         "advance_amount": float(advance),
+        "entry_date": today_bolivia().isoformat(),
         "estimated_delivery_date": order.estimated_delivery_date.isoformat() if order.estimated_delivery_date else None,
         "status": "en_proceso",
         **billing,

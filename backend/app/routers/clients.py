@@ -2,9 +2,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.database import fetch_in, get_supabase, in_parallel
+from app.database import fetch_all, fetch_in, get_supabase, in_parallel
 from app.schemas.client import ClientCreate, ClientResponse, ClientUpdate, VehicleCreate, VehicleResponse
 from app.utils.phone import normalize_bolivia_phone
+from app.utils.search import sanitize_search
 
 router = APIRouter(prefix="/clients", tags=["Clientes"])
 
@@ -24,16 +25,15 @@ def _attach_vehicles(db, clients: list[dict]) -> None:
 def _attach_order_history(db, clients: list[dict]) -> None:
     """Historial de OT: se arma al vuelo, no hay un contador guardado."""
     client_ids = [c["id"] for c in clients]
-    orders_result = (
-        db.table("work_orders")
+    orders = fetch_all(
+        lambda: db.table("work_orders")
         .select("id, client_id, ot_number, work_description, status, price_charged, entry_date, created_at")
         .in_("client_id", client_ids)
         .order("created_at", desc=True)
-        .execute()
     )
     orders_by_client: dict[str, list] = {cid: [] for cid in client_ids}
     stored_count: dict[str, int] = {cid: 0 for cid in client_ids}
-    for o in orders_result.data or []:
+    for o in orders:
         cid = o.get("client_id")
         if cid not in orders_by_client:
             continue
@@ -55,20 +55,16 @@ def _enrich_clients_list(db, clients: list[dict]) -> list[dict]:
         return fetch_in(db, "vehicles", "client_id", client_ids)
 
     def q_stored():
-        return (
-            db.table("work_orders")
-            .select("client_id")
-            .eq("status", "terminado")
-            .in_("client_id", client_ids)
-            .execute()
+        return fetch_all(
+            lambda: db.table("work_orders").select("client_id").eq("status", "terminado").in_("client_id", client_ids)
         )
 
-    vehicles, stored_res = in_parallel(q_vehicles, q_stored)
+    vehicles, stored = in_parallel(q_vehicles, q_stored)
     vehicles_by_client: dict[str, list] = {cid: [] for cid in client_ids}
     for v in vehicles:
         vehicles_by_client.setdefault(v["client_id"], []).append(v)
     stored_count: dict[str, int] = {cid: 0 for cid in client_ids}
-    for o in stored_res.data or []:
+    for o in stored:
         cid = o.get("client_id")
         if cid in stored_count:
             stored_count[cid] += 1
@@ -113,11 +109,12 @@ def list_clients(
     db = get_supabase()
     query = db.table("clients").select("*", count="exact")
 
-    if search:
+    safe = sanitize_search(search) if search else ""
+    if safe:
         if prefix:
-            query = query.ilike("name", f"{search}%")
+            query = query.ilike("name", f"{safe}%")
         else:
-            query = query.or_(f"name.ilike.%{search}%,phone.ilike.%{search}%,whatsapp.ilike.%{search}%")
+            query = query.or_(f"name.ilike.%{safe}%,phone.ilike.%{safe}%,whatsapp.ilike.%{safe}%")
 
     desc = sort_dir.lower() == "desc"
     sort_col = sort_by if sort_by in ("name", "created_at", "updated_at", "balance_updated_at") else "name"

@@ -1,15 +1,29 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.auth.deps import get_current_user
+from app.auth.permissions import PERMISSION_FINANZAS_VER, has_permission
+from app.auth.user import AuthUser
 from app.database import get_supabase
 from app.schemas.mechanic import MechanicCreate, MechanicResponse, MechanicUpdate
 
 router = APIRouter(prefix="/mechanics", tags=["Mecánicos"])
 
+SALARY_FIELDS = ("salary_base", "salary_mode", "salary_period", "pay_day", "work_started_on")
 
-def _mechanic_row(row: dict) -> dict:
+
+def _sees_salary(user: AuthUser) -> bool:
+    return has_permission(user.role, PERMISSION_FINANZAS_VER)
+
+
+def _mechanic_row(row: dict, sees_salary: bool) -> dict:
     row.setdefault("role", "mechanic")
+    if not sees_salary:
+        # Quien no entra a Finanzas no recibe el sueldo: los campos no viajan en la respuesta.
+        for field in SALARY_FIELDS:
+            row.pop(field, None)
+        return row
     row.setdefault("salary_base", 0)
     row.setdefault("salary_mode", "both")
     row.setdefault("salary_period", "monthly")
@@ -17,14 +31,16 @@ def _mechanic_row(row: dict) -> dict:
     return row
 
 
-@router.get("", response_model=list[MechanicResponse])
+@router.get("", response_model=list[MechanicResponse], response_model_exclude_unset=True)
 def list_mechanics(
     search: str | None = Query(None),
     prefix: bool = Query(False),
     active_only: bool = Query(True),
     role: str | None = Query(None, description="mechanic | designer | admin"),
     limit: int = Query(50, ge=1, le=200),
+    user: AuthUser = Depends(get_current_user),
 ):
+    sees_salary = _sees_salary(user)
     db = get_supabase()
     query = db.table("mechanics").select("*").order("name")
     if active_only:
@@ -47,13 +63,13 @@ def list_mechanics(
         rows = result.data or []
         if role in ("designer", "admin"):
             return []
-        return [_mechanic_row(r) for r in rows]
+        return [_mechanic_row(r, sees_salary) for r in rows]
     rows = result.data or []
-    return [_mechanic_row(r) for r in rows]
+    return [_mechanic_row(r, sees_salary) for r in rows]
 
 
-@router.post("", response_model=MechanicResponse, status_code=201)
-def create_mechanic(body: MechanicCreate):
+@router.post("", response_model=MechanicResponse, status_code=201, response_model_exclude_unset=True)
+def create_mechanic(body: MechanicCreate, user: AuthUser = Depends(get_current_user)):
     db = get_supabase()
     payload = {"name": body.name.strip(), "role": body.role}
     if body.role == "admin":
@@ -79,17 +95,19 @@ def create_mechanic(body: MechanicCreate):
     if not result.data:
         raise HTTPException(status_code=500, detail="Error al crear integrante")
     row = result.data[0]
-    return _mechanic_row(row)
+    return _mechanic_row(row, _sees_salary(user))
 
 
-@router.patch("/{mechanic_id}", response_model=MechanicResponse)
-def update_mechanic(mechanic_id: UUID, body: MechanicUpdate):
+@router.patch("/{mechanic_id}", response_model=MechanicResponse, response_model_exclude_unset=True)
+def update_mechanic(mechanic_id: UUID, body: MechanicUpdate, user: AuthUser = Depends(get_current_user)):
     db = get_supabase()
     data = {k: v for k, v in body.model_dump(mode="json").items() if v is not None}
     if "name" in data:
         data["name"] = data["name"].strip()
     if not data:
         raise HTTPException(status_code=400, detail="Sin datos para actualizar")
+    if not _sees_salary(user) and set(SALARY_FIELDS) & set(data):
+        raise HTTPException(status_code=403, detail="No tenés acceso para cambiar sueldos")
     try:
         result = db.table("mechanics").update(data).eq("id", str(mechanic_id)).execute()
     except Exception:
@@ -107,4 +125,27 @@ def update_mechanic(mechanic_id: UUID, body: MechanicUpdate):
         raise
     if not result.data:
         raise HTTPException(status_code=404, detail="Mecánico no encontrado")
-    return _mechanic_row(result.data[0])
+    saved = result.data[0]
+    if "salary_base" in data:
+        _keep_one_salary(db, saved)
+    return _mechanic_row(saved, _sees_salary(user))
+
+
+def _keep_one_salary(db, person: dict) -> None:
+    name = str(person.get("name") or "").strip()
+    key = name.lower()
+    if not key:
+        return
+    rows = (
+        db.table("mechanics")
+        .select("id, name")
+        .eq("active", True)
+        .ilike("name", name)
+        .execute()
+    ).data or []
+    for row in rows:
+        if str(row.get("id")) == str(person.get("id")):
+            continue
+        if str(row.get("name") or "").strip().lower() != key:
+            continue
+        db.table("mechanics").update({"salary_base": 0}).eq("id", str(row["id"])).execute()

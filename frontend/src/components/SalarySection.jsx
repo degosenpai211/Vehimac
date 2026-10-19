@@ -23,6 +23,11 @@ const STATUS = {
 }
 const PAID_TOLERANCE = 0.009
 
+function roleText(worker) {
+  const roles = worker.roles?.length ? worker.roles : [worker.role]
+  return roles.map((role) => ROLE_LABEL[role] || 'Mecánico').join(', ')
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -334,9 +339,12 @@ export default function SalarySection({ onPaid, embedded = false }) {
                   <div>
                     <p className="font-semibold text-slate-800">{w.name}</p>
                     <p className="text-xs text-slate-500">
-                      {ROLE_LABEL[w.role] || 'Mecánico'} · {MODE_LABEL[w.salary_mode]} · {PERIOD_LABEL[w.salary_period]}
+                      {roleText(w)} · {MODE_LABEL[w.salary_mode]} · {PERIOD_LABEL[w.salary_period]}
                       {w.salary_mode !== 'per_job' && w.salary_base > 0 ? ` · ${formatCurrency(w.salary_base)}` : ''}
                     </p>
+                    {w.roles?.length > 1 && (
+                      <p className="text-xs text-slate-500">Un sueldo para todos sus cargos. Se paga una vez.</p>
+                    )}
                   </div>
                   <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
                 </div>

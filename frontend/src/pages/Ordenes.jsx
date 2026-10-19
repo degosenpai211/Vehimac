@@ -67,7 +67,7 @@ export default function Ordenes() {
   const [expandedCols, setExpandedCols] = useState({})
   const photosRef = useRef(null)
   const { toast } = useToast()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const neto = pieces.reduce((s, p) => s + (Number(p.amount) || 0), 0)
   const billing = computeBilling(neto, billingType)
@@ -103,6 +103,20 @@ export default function Ordenes() {
   useEffect(() => {
     const p = searchParams.get('period')
     if (p) setPeriod(p)
+  }, [searchParams])
+
+  useEffect(() => {
+    const id = searchParams.get('order')
+    if (!id) return undefined
+    let cancelled = false
+    api.getWorkOrder(id)
+      .then((order) => {
+        if (!cancelled) setDetailOrder(order)
+      })
+      .catch((err) => {
+        if (!cancelled) toast(err.message, 'error')
+      })
+    return () => { cancelled = true }
   }, [searchParams])
 
   const openCreate = () => {
@@ -545,7 +559,10 @@ export default function Ordenes() {
                     </div>
                     <span className={`text-sm font-bold px-2.5 py-0.5 rounded-full ${col.badge}`}>{count}</span>
                   </div>
-                  <p className="text-xs mt-1 opacity-90">{col.subtitle}</p>
+                  <p className="text-xs mt-1 opacity-90">
+                    {col.subtitle}
+                    {col.id === 'entregado' && period === 'all' && !hasDateFilters && ' · últimos 30 días, buscá para ver anteriores'}
+                  </p>
                 </div>
                 <Droppable droppableId={col.id}>
                   {(provided, snapshot) => (
@@ -767,7 +784,13 @@ export default function Ordenes() {
       <OrderDetailModal
         open={!!detailOrder}
         order={detailOrder}
-        onClose={() => setDetailOrder(null)}
+        onClose={() => {
+          setDetailOrder(null)
+          if (!searchParams.get('order')) return
+          const next = new URLSearchParams(searchParams)
+          next.delete('order')
+          setSearchParams(next, { replace: true })
+        }}
         onCountChange={(orderId, count) => {
           setBoard((prev) => {
             const next = { ...prev }
