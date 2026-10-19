@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Package, Users, Wrench, DollarSign, Menu, X, UserCog, FileText
+  LayoutDashboard, Package, Users, Wrench, DollarSign, Menu, X, UserCog, FileText, LogOut
 } from 'lucide-react'
+import { auth } from '../services/api'
 import {
   dismissPendingFicha,
   getPendingFichas,
@@ -90,6 +91,16 @@ export default function Layout() {
               {label}
             </NavLink>
           ))}
+          {auth.hasSession() && (
+            <button
+              type="button"
+              onClick={auth.logout}
+              className="w-full flex items-center gap-3 px-3 py-3 min-h-[44px] rounded-lg text-sm font-medium transition-colors text-brand-200 hover:bg-brand-800 hover:text-white"
+            >
+              <LogOut size={18} />
+              Cerrar sesión
+            </button>
+          )}
         </nav>
       </aside>
 
