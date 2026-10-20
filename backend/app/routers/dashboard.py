@@ -1,11 +1,8 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
-from app.auth.deps import require_permission
-from app.auth.permissions import PERMISSION_FINANZAS_VER
-from app.auth.user import AuthUser
 from app.database import fetch_all, get_supabase, in_parallel
 from app.utils.dates import today_bolivia
 from app.utils.recent_cache import RecentCache
@@ -356,7 +353,7 @@ def get_dashboard_stats():
 
 
 @router.get("/finance-kpis")
-def get_finance_kpis(_user: AuthUser = Depends(require_permission(PERMISSION_FINANZAS_VER))):
+def get_finance_kpis():
     db = get_supabase()
     today = today_bolivia()
     orders = _load_workshop_orders(db)
@@ -365,7 +362,7 @@ def get_finance_kpis(_user: AuthUser = Depends(require_permission(PERMISSION_FIN
 
 
 @router.get("/finance-trends")
-def get_finance_trends(_user: AuthUser = Depends(require_permission(PERMISSION_FINANZAS_VER))):
+def get_finance_trends():
     db = get_supabase()
     today = today_bolivia()
     lookback = today - timedelta(days=PERIODS["90d"])

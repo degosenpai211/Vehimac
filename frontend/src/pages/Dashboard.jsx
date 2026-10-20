@@ -12,8 +12,6 @@ import { useToast } from '../components/Toast'
 import { api, formatCurrency, formatDate, formatOT } from '../services/api'
 import { ORDER_STATUS } from '../utils/status'
 import { startAppTour } from '../tours/appTour'
-import { useAuth } from '../auth/AuthContext'
-import { can, PERMISSION_FINANZAS_VER, ROLE_ADMIN } from '../auth/roles'
 import { downloadReport } from '../utils/kpiPdf'
 import {
   isIosDevice,
@@ -159,9 +157,8 @@ export default function Dashboard() {
   const [notifyState, setNotifyState] = useState(notificationPermission())
   const [searchParams] = useSearchParams()
   const { toast } = useToast()
-  const { user } = useAuth()
-  const canSeeMoney = can(user, PERMISSION_FINANZAS_VER)
-  const isAdmin = user?.role === ROLE_ADMIN
+  const canSeeMoney = true
+  const isAdmin = true
   const ios = isIosDevice()
   const standalone = isStandalonePwa()
   const kpis = { ...(stats?.kpis || {}), ...(financeKpis || {}) }

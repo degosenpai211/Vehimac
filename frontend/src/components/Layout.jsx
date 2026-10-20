@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Package, Users, Wrench, DollarSign, Menu, X, UserCog, FileText, LogOut, CircleUser
+  LayoutDashboard, Package, Users, Wrench, DollarSign, Menu, X, UserCog, FileText
 } from 'lucide-react'
 import {
   dismissPendingFicha,
   getPendingFichas,
   subscribePendingFichas,
 } from '../utils/pendingFichas'
-import { useAuth } from '../auth/AuthContext'
-import { can, PERMISSION_FINANZAS_VER, ROLE_LABEL } from '../auth/roles'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Inicio' },
@@ -18,28 +16,21 @@ const navItems = [
   { to: '/equipo', icon: UserCog, label: 'Equipo' },
   { to: '/ordenes', icon: Wrench, label: 'Órdenes' },
   { to: '/proformas', icon: FileText, label: 'Proformas' },
-  { to: '/finanzas', icon: DollarSign, label: 'Finanzas', permission: PERMISSION_FINANZAS_VER },
+  { to: '/finanzas', icon: DollarSign, label: 'Finanzas' },
 ]
 
 const bottomItems = [
   { to: '/', icon: LayoutDashboard, label: 'Inicio' },
   { to: '/ordenes', icon: Wrench, label: 'Órdenes' },
   { to: '/proformas', icon: FileText, label: 'Proformas' },
-  { to: '/finanzas', icon: DollarSign, label: 'Finanzas', permission: PERMISSION_FINANZAS_VER },
+  { to: '/finanzas', icon: DollarSign, label: 'Finanzas' },
 ]
-
-function visibleItems(items, user) {
-  return items.filter((item) => !item.permission || can(user, item.permission))
-}
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [pendingFichas, setPendingFichas] = useState(() => getPendingFichas())
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
-  const menu = visibleItems(navItems, user)
-  const mobileMenu = visibleItems(bottomItems, user)
 
   useEffect(() => subscribePendingFichas(setPendingFichas), [])
 
@@ -80,7 +71,7 @@ export default function Layout() {
           </button>
         </div>
         <nav className="p-3 space-y-1 overflow-y-auto" data-tour="nav-menu">
-          {menu.map(({ to, icon: Icon, label }) => (
+          {navItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
@@ -100,33 +91,6 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="p-3 border-t border-brand-800 space-y-2">
-          <NavLink
-            to="/cuenta"
-            onClick={() => setSidebarOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-lg ${
-                isActive ? 'bg-brand-700' : 'hover:bg-brand-800'
-              }`
-            }
-          >
-            <CircleUser size={18} className="text-brand-200 shrink-0" />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium truncate">{user?.name}</span>
-              <span className="block text-[11px] text-brand-300 truncate">
-                {ROLE_LABEL[user?.role] || user?.role}
-              </span>
-            </span>
-          </NavLink>
-          <button
-            type="button"
-            onClick={() => logout()}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-brand-200 hover:bg-brand-800 hover:text-white min-h-[44px]"
-          >
-            <LogOut size={18} />
-            Salir
-          </button>
-        </div>
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
@@ -171,8 +135,8 @@ export default function Layout() {
       </div>
 
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)]" data-tour="nav-mobile">
-        <div className={`grid ${mobileMenu.length >= 4 ? 'grid-cols-5' : 'grid-cols-4'}`}>
-          {mobileMenu.map(({ to, icon: Icon, label }) => (
+        <div className={`grid ${bottomItems.length >= 4 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+          {bottomItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}

@@ -1,29 +1,14 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 
-from app.auth.deps import get_current_user
-from app.auth.permissions import PERMISSION_FINANZAS_VER, has_permission
-from app.auth.user import AuthUser
 from app.database import get_supabase
 from app.schemas.mechanic import MechanicCreate, MechanicResponse, MechanicUpdate
 
 router = APIRouter(prefix="/mechanics", tags=["Mecánicos"])
 
-SALARY_FIELDS = ("salary_base", "salary_mode", "salary_period", "pay_day", "work_started_on")
-
-
-def _sees_salary(user: AuthUser) -> bool:
-    return has_permission(user.role, PERMISSION_FINANZAS_VER)
-
-
-def _mechanic_row(row: dict, sees_salary: bool) -> dict:
+def _mechanic_row(row: dict) -> dict:
     row.setdefault("role", "mechanic")
-    if not sees_salary:
-        # Quien no entra a Finanzas no recibe el sueldo: los campos no viajan en la respuesta.
-        for field in SALARY_FIELDS:
-            row.pop(field, None)
-        return row
     row.setdefault("salary_base", 0)
     row.setdefault("salary_mode", "both")
     row.setdefault("salary_period", "monthly")
@@ -38,9 +23,7 @@ def list_mechanics(
     active_only: bool = Query(True),
     role: str | None = Query(None, description="mechanic | designer | admin"),
     limit: int = Query(50, ge=1, le=200),
-    user: AuthUser = Depends(get_current_user),
 ):
-    sees_salary = _sees_salary(user)
     db = get_supabase()
     query = db.table("mechanics").select("*").order("name")
     if active_only:
@@ -63,13 +46,13 @@ def list_mechanics(
         rows = result.data or []
         if role in ("designer", "admin"):
             return []
-        return [_mechanic_row(r, sees_salary) for r in rows]
+        return [_mechanic_row(r) for r in rows]
     rows = result.data or []
-    return [_mechanic_row(r, sees_salary) for r in rows]
+    return [_mechanic_row(r) for r in rows]
 
 
 @router.post("", response_model=MechanicResponse, status_code=201, response_model_exclude_unset=True)
-def create_mechanic(body: MechanicCreate, user: AuthUser = Depends(get_current_user)):
+def create_mechanic(body: MechanicCreate):
     db = get_supabase()
     payload = {"name": body.name.strip(), "role": body.role}
     if body.role == "admin":
@@ -95,19 +78,17 @@ def create_mechanic(body: MechanicCreate, user: AuthUser = Depends(get_current_u
     if not result.data:
         raise HTTPException(status_code=500, detail="Error al crear integrante")
     row = result.data[0]
-    return _mechanic_row(row, _sees_salary(user))
+    return _mechanic_row(row)
 
 
 @router.patch("/{mechanic_id}", response_model=MechanicResponse, response_model_exclude_unset=True)
-def update_mechanic(mechanic_id: UUID, body: MechanicUpdate, user: AuthUser = Depends(get_current_user)):
+def update_mechanic(mechanic_id: UUID, body: MechanicUpdate):
     db = get_supabase()
     data = {k: v for k, v in body.model_dump(mode="json").items() if v is not None}
     if "name" in data:
         data["name"] = data["name"].strip()
     if not data:
         raise HTTPException(status_code=400, detail="Sin datos para actualizar")
-    if not _sees_salary(user) and set(SALARY_FIELDS) & set(data):
-        raise HTTPException(status_code=403, detail="No tenés acceso para cambiar sueldos")
     try:
         result = db.table("mechanics").update(data).eq("id", str(mechanic_id)).execute()
     except Exception:
@@ -128,7 +109,7 @@ def update_mechanic(mechanic_id: UUID, body: MechanicUpdate, user: AuthUser = De
     saved = result.data[0]
     if "salary_base" in data:
         _keep_one_salary(db, saved)
-    return _mechanic_row(saved, _sees_salary(user))
+    return _mechanic_row(saved)
 
 
 def _keep_one_salary(db, person: dict) -> None:

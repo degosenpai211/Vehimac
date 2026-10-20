@@ -62,19 +62,3 @@
   transform-origin: center bottom;
   animation: chart-bar-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-
-.login-hero {
-  background:
-    radial-gradient(circle at 18% 20%, rgba(96, 165, 250, 0.35), transparent 42%),
-    radial-gradient(circle at 88% 78%, rgba(30, 64, 175, 0.55), transparent 46%),
-    linear-gradient(160deg, #1e3a8a 0%, #172554 55%, #0f172a 100%);
-}
-
-.login-hero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 22px 22px;
-  mask-image: linear-gradient(to bottom, black, transparent 85%);
-}

@@ -1,8 +1,6 @@
 import { compressOrderPhoto } from '../utils/compressImage'
-import { authService, getAccessToken } from '../auth/authService'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-export const UNAUTHORIZED_EVENT = 'vehimac:unauthorized'
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -12,22 +10,6 @@ export class ApiError extends Error {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-
-async function authorizationHeader() {
-  let token = getAccessToken()
-  if (!token) {
-    const session = await authService.getSession().catch(() => null)
-    token = session?.access_token || ''
-  }
-  if (!token) return {}
-  return { Authorization: `Bearer ${token}` }
-}
-
-function raiseIfDenied(status, sentToken) {
-  if (status === 401 && sentToken && typeof window !== 'undefined') {
-    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
-  }
-}
 
 async function parseBody(res) {
   if (res.status === 204) return null
@@ -54,13 +36,11 @@ function errorMessage(data, status) {
 }
 
 async function request(path, options = {}, attempt = 0) {
-  const auth = await authorizationHeader()
-  const sentToken = Boolean(auth.Authorization)
   let res
   try {
     res = await fetch(`${API_URL}/api${path}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', ...auth, ...options.headers },
+      headers: { 'Content-Type': 'application/json', ...options.headers },
     })
   } catch {
     const method = (options.method || 'GET').toUpperCase()
@@ -72,53 +52,26 @@ async function request(path, options = {}, attempt = 0) {
   }
 
   const data = await parseBody(res)
-  if (res.status === 401 && sentToken && attempt < 1) {
-    const session = await authService.refreshSession().catch(() => null)
-    const fresh = session?.access_token || ''
-    const sent = auth.Authorization.replace('Bearer ', '')
-    if (fresh && fresh !== sent) return request(path, options, attempt + 1)
-  }
-  if (!res.ok) {
-    raiseIfDenied(res.status, sentToken)
-    throw new ApiError(errorMessage(data, res.status), res.status)
-  }
+  if (!res.ok) throw new ApiError(errorMessage(data, res.status), res.status)
   return data
 }
 
 async function uploadForm(path, form) {
-  const auth = await authorizationHeader()
   let res
   try {
     res = await fetch(`${API_URL}/api${path}`, {
       method: 'POST',
-      headers: auth,
       body: form,
     })
   } catch {
     throw new ApiError(NO_CONNECTION, 0)
   }
   const data = await parseBody(res)
-  if (!res.ok) {
-    raiseIfDenied(res.status, Boolean(auth.Authorization))
-    throw new ApiError(errorMessage(data, res.status), res.status)
-  }
+  if (!res.ok) throw new ApiError(errorMessage(data, res.status), res.status)
   return data
 }
 
 export const api = {
-  me: () => request('/auth/me'),
-  authStatus: () => request('/auth/status'),
-  bootstrapOwners: (payload) => request('/auth/bootstrap', { method: 'POST', body: JSON.stringify(payload) }),
-  listAccessUsers: () => request('/auth/users'),
-  inviteAccessUser: (data) => request('/auth/users', { method: 'POST', body: JSON.stringify(data) }),
-  updateAccessUser: (id, fields) =>
-    request(`/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(fields) }),
-  requestAccess: () => request('/auth/join-requests', { method: 'POST' }),
-  listJoinRequests: () => request('/auth/join-requests'),
-  approveJoinRequest: (id, data) =>
-    request(`/auth/join-requests/${id}/approve`, { method: 'POST', body: JSON.stringify(data) }),
-  rejectJoinRequest: (id) =>
-    request(`/auth/join-requests/${id}/reject`, { method: 'POST' }),
   getStats: () => request('/dashboard/stats'),
   getFinanceKpis: () => request('/dashboard/finance-kpis'),
   getFinanceTrends: () => request('/dashboard/finance-trends'),
