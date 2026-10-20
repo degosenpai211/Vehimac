@@ -14,7 +14,7 @@ import { ORDER_STATUS } from '../utils/status'
 import { startAppTour } from '../tours/appTour'
 import { useAuth } from '../auth/AuthContext'
 import { can, PERMISSION_FINANZAS_VER, ROLE_ADMIN } from '../auth/roles'
-import { downloadTextPdf } from '../utils/kpiPdf'
+import { downloadReport } from '../utils/kpiPdf'
 import {
   isIosDevice,
   isStandalonePwa,
@@ -212,39 +212,41 @@ export default function Dashboard() {
   if (!stats) return <p className="text-red-600">Error al cargar estadísticas</p>
 
   const exportKpis = () => {
-    const lines = []
+    const cards = []
     if (canSeeMoney) {
-      lines.push(
-        `Ingresos hoy: ${formatCurrency(kpis.income_today)}`,
-        `Ingresos semana: ${formatCurrency(kpis.income_week)}`,
-        `Ingresos mes: ${formatCurrency(kpis.income_month)}`,
-        `Gastos mes: ${formatCurrency(kpis.expenses_month)}`,
-        `Por cobrar: ${formatCurrency(kpis.to_collect)}`,
-        `Adelantos del mes: ${formatCurrency(kpis.advances_month)}`,
-        `Ticket promedio: ${formatCurrency(kpis.avg_ticket)} (${kpis.delivered_month || 0} OT entregadas este mes)`,
+      cards.push(
+        { label: 'Ingresos hoy', value: formatCurrency(kpis.income_today), tone: 'green' },
+        { label: 'Ingresos semana', value: formatCurrency(kpis.income_week), tone: 'green' },
+        { label: 'Ingresos mes', value: formatCurrency(kpis.income_month), tone: 'green' },
+        { label: 'Gastos mes', value: formatCurrency(kpis.expenses_month), tone: 'red' },
+        { label: 'Por cobrar', value: formatCurrency(kpis.to_collect), subtitle: 'OTs no entregadas', tone: 'amber' },
+        { label: 'Adelantos del mes', value: formatCurrency(kpis.advances_month), tone: 'brand' },
+        { label: 'Ticket promedio', value: formatCurrency(kpis.avg_ticket), subtitle: `${kpis.delivered_month || 0} OT entregadas este mes`, tone: 'brand' },
+        { label: 'QR vs el resto', value: formatCurrency(kpis.income_qr_month), subtitle: `Otros ${formatCurrency(kpis.income_other_month)}`, tone: 'green' },
       )
     }
-    lines.push(
-      `OTs atrasadas: ${kpis.overdue_count ?? 0}`,
-      `Se entregan hoy: ${kpis.due_today_count ?? 0}`,
-      `Se entregan mañana: ${kpis.due_tomorrow_count ?? 0}`,
-      `Órdenes activas: ${stats.active_orders ?? 0}`,
-      `Piezas +7 días: ${kpis.stale_pieces_count ?? stats.stored_pieces_count ?? 0}`,
-      `Clientes: ${stats.total_clients ?? 0}`,
+    cards.push(
+      { label: 'OTs atrasadas', value: String(kpis.overdue_count ?? 0), subtitle: kpis.overdue_pct ? `${kpis.overdue_pct}% de las pendientes` : 'Ninguna', tone: 'red' },
+      { label: 'Se entregan hoy', value: String(kpis.due_today_count ?? 0), tone: 'amber' },
+      { label: 'Se entregan mañana', value: String(kpis.due_tomorrow_count ?? 0), tone: 'amber' },
+      { label: 'Órdenes activas', value: String(stats.active_orders ?? 0), tone: 'amber' },
+      { label: 'Piezas +7 días', value: String(kpis.stale_pieces_count ?? stats.stored_pieces_count ?? 0), tone: 'amber' },
+      { label: 'Clientes', value: String(stats.total_clients ?? 0), tone: 'brand' },
+      { label: 'Proformas → OT', value: `${kpis.proformas_conversion_pct ?? 0}%`, subtitle: `${kpis.proformas_converted || 0} de ${kpis.proformas_total || 0}`, tone: 'brand' },
+      { label: 'Días promedio', value: String(kpis.avg_days ?? 0), subtitle: 'Ingreso → entrega (mes)', tone: 'brand' },
     )
-    if (canSeeMoney) {
-      lines.push(`QR vs el resto: ${formatCurrency(kpis.income_qr_month)} (otros ${formatCurrency(kpis.income_other_month)})`)
-    }
-    lines.push(
-      `Proformas → OT: ${kpis.proformas_conversion_pct ?? 0}% (${kpis.proformas_converted || 0} de ${kpis.proformas_total || 0})`,
-      `Días promedio: ${kpis.avg_days ?? 0}`,
-    )
-    const today = new Date().toLocaleDateString('es-BO')
-    downloadTextPdf({
-      title: 'KPIs de Inicio',
-      subtitle: today,
-      lines,
+    const bars = canSeeMoney ? [
+      { label: 'Hoy', income: trends?.today?.total_ingresos, expense: trends?.today?.total_gastos },
+      { label: 'Semana', income: trends?.week?.total_ingresos, expense: trends?.week?.total_gastos },
+      { label: 'Mes', income: trends?.month?.total_ingresos, expense: trends?.month?.total_gastos },
+    ] : []
+    downloadReport({
+      title: 'Inicio',
+      subtitle: new Date().toLocaleDateString('es-BO', { dateStyle: 'long' }),
       filename: 'kpis-inicio.pdf',
+      cards,
+      bars,
+      chartTitle: 'Ingresos y egresos',
     })
   }
 

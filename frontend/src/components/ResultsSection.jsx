@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import FinanceChart from './FinanceChart'
 import { useToast } from './Toast'
 import { api, formatCurrency } from '../services/api'
-import { downloadTextPdf } from '../utils/kpiPdf'
+import { downloadReport } from '../utils/kpiPdf'
 
 function blank(amount) {
   if (!amount) return <span className="text-slate-300">—</span>
@@ -79,22 +79,41 @@ export default function ResultsSection({ onChanged }) {
 
   const exportCurrent = () => {
     if (!data) return
-    const lines = []
-    for (const group of data.groups || []) {
-      lines.push(group.label)
-      for (const row of group.rows || []) {
-        lines.push(`${row.label}: ${formatCurrency(row.amount)}`)
-      }
-      lines.push(`Total ${group.label}: ${formatCurrency(group.total)}`)
-      lines.push('')
-    }
-    lines.push(`Resultado del período: ${formatCurrency(data.resultado)}`)
-    lines.push(`IVA facturado: ${formatCurrency(data.iva_facturado)}`)
-    downloadTextPdf({
-      title: 'KPIs de Finanzas',
+    const sections = (data.groups || []).map((group) => ({
+      title: group.label,
+      rows: [
+        ...(group.rows || [])
+          .filter((row) => Number(row.amount))
+          .map((row) => ({
+            label: row.label,
+            value: formatCurrency(row.amount),
+            tone: row.kind === 'ingreso' ? 'green' : undefined,
+          })),
+        { label: `Total ${group.label}`, value: formatCurrency(group.total), strong: true },
+      ],
+    }))
+    sections.push({
+      title: 'Cierre',
+      rows: [
+        { label: 'Resultado del período', value: formatCurrency(data.resultado), strong: true, tone: data.resultado >= 0 ? 'green' : 'red' },
+        { label: 'IVA facturado', value: formatCurrency(data.iva_facturado), tone: 'amber' },
+      ],
+    })
+    downloadReport({
+      title: 'Resultados',
       subtitle: data.label || '',
-      lines,
       filename: 'kpis-finanzas.pdf',
+      cards: [
+        { label: 'Resultado', value: formatCurrency(data.resultado), tone: data.resultado >= 0 ? 'green' : 'red' },
+        { label: 'IVA facturado', value: formatCurrency(data.iva_facturado), tone: 'amber' },
+      ],
+      chartTitle: grain === 'week' ? 'Evolución semanal' : 'Evolución mensual',
+      bars: (data.series || []).map((bar) => ({
+        label: bar.label,
+        income: bar.ingresos,
+        expense: bar.egresos,
+      })),
+      sections,
     })
   }
 
