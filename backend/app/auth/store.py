@@ -10,14 +10,14 @@ from app.database import get_supabase
 
 PROFILES_TABLE = "perfiles_usuario"
 JOIN_TABLE = "solicitudes_acceso"
-MISSING_TABLE_HINT = "No se pudo leer perfiles. Ejecutá migration_v19.sql en Supabase."
-MISSING_JOIN_TABLE_HINT = "No se pudieron leer los pedidos de acceso. Ejecutá migration_v20.sql en Supabase."
+MISSING_TABLE_HINT = "Falló. Reiniciá e intentá otra vez."
+MISSING_JOIN_TABLE_HINT = "Falló. Reiniciá e intentá otra vez."
 RECOVERY_PATH = "/recuperar-clave"
 JOIN_STATUS_PENDING = "pendiente"
 JOIN_STATUS_APPROVED = "aprobada"
 JOIN_STATUS_REJECTED = "rechazada"
 MUST_LOGIN_MESSAGE = "Tenés que iniciar sesión"
-SESSION_CHECK_FAILED = "No se pudo verificar la sesión. Probá de nuevo."
+SESSION_CHECK_FAILED = "No hay conexión. Probá de nuevo."
 VERIFY_CACHE_SECONDS = 60
 LOGOUT_HINTS = ("invalid jwt", "jwt expired", "invalid claim", "bad_jwt")
 _verified_users: dict[str, tuple[float, AuthUser]] = {}
@@ -210,7 +210,7 @@ def _create_user_message(exc: Exception) -> str:
     if _already_registered(exc):
         return "Ese correo ya tiene una cuenta en Authentication."
     if "password" in text:
-        return "La clave no cumple las reglas de Supabase."
+        return "La clave no sirve. Probá con otra."
     return "No se pudo crear la cuenta."
 
 
@@ -237,7 +237,7 @@ def delete_auth_user(user_id: str) -> None:
         get_supabase().auth.admin.delete_user(user_id)
     except Exception as exc:
         raise AuthError(
-            "Se creó una cuenta a medias. Revisá Authentication en Supabase.",
+            "Falló. Probá de nuevo.",
             500,
         ) from exc
 
@@ -307,7 +307,7 @@ def _invite_message(exc: Exception) -> str:
     if "rate" in text:
         return "Demasiadas invitaciones seguidas. Probá en un rato."
     if "smtp" in text or "email" in text and "send" in text:
-        return "No se pudo enviar el correo. Revisá el envío de mails en Supabase."
+        return "No se pudo enviar el correo. Probá más tarde."
     return "No se pudo enviar la invitación."
 
 

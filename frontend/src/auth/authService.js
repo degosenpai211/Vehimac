@@ -7,7 +7,7 @@ let accessToken = ''
 let client = null
 
 function missingConfigMessage() {
-  return 'Falta la clave anon del frontend. En Supabase: Project Settings → API → copiá Project URL y la key anon public (no la service_role). Pegala en frontend/.env como VITE_SUPABASE_ANON_KEY y reiniciá npm run dev.'
+  return 'Falló. Reiniciá e intentá otra vez.'
 }
 
 function friendlyAuthMessage(error) {
@@ -28,12 +28,15 @@ function friendlyAuthMessage(error) {
     return 'La clave nueva no puede ser igual a la anterior.'
   }
   if (text.includes('provider is not enabled') || text.includes('unsupported provider')) {
-    return 'Google no está prendido en Supabase. Authentication → Providers → Google.'
+    return 'No se pudo entrar con Google. Probá con el correo.'
   }
   if (text.includes('redirect')) {
-    return 'Falta autorizar la URL de esta app en Supabase (Redirect URLs).'
+    return 'No se pudo entrar. Probá de nuevo.'
   }
-  return error?.message || 'No se pudo completar la operación.'
+  if (text.includes('fetch') || text.includes('network') || text.includes('failed to fetch')) {
+    return 'No hay conexión. Probá de nuevo.'
+  }
+  return 'No se pudo entrar. Probá de nuevo.'
 }
 
 async function getClient() {

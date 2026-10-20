@@ -164,7 +164,7 @@ def upload_proforma_pdf(db, proforma_id: str, file: UploadFile) -> dict:
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"No se pudo guardar el PDF. ¿Existe el bucket proforma-pdfs? ({exc})",
+            detail="No se pudo guardar el PDF. Probá de nuevo.",
         ) from exc
 
     url = _signed_url(db, storage_path)

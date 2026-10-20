@@ -43,16 +43,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\/api\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: { maxEntries: 100, maxAgeSeconds: 300 },
-            },
-          },
-        ],
+        // La API no se guarda: una respuesta lenta se quedaba esperando, y una copia vieja mostraría órdenes atrasadas.
       },
     }),
   ],

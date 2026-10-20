@@ -10,7 +10,7 @@ import { api } from '../services/api'
 
 const EMPTY_PERSON = { name: '', email: '', password: '' }
 const MISSING_ANON_KEY_MESSAGE =
-  'Falta pegar VITE_SUPABASE_ANON_KEY en frontend/.env (Project Settings → API → anon public). Después reiniciá npm run dev.'
+  'Falló. Reiniciá e intentá otra vez.'
 
 function PersonFields({ idPrefix, title, hint, person, onChange }) {
   const updateField = (event) => {

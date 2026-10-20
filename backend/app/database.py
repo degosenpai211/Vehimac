@@ -1,17 +1,43 @@
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 
-from supabase import Client, create_client
+import httpx
+from supabase import Client, ClientOptions, create_client
 
 from app.config import settings
 
 _IN_CHUNK = 80
 PAGE_SIZE = 1000
+CONNECT_TIMEOUT_SECONDS = 10.0
+READ_TIMEOUT_SECONDS = 20.0
+KEEPALIVE_SECONDS = 5.0
+
+
+def supabase_http_client() -> httpx.Client:
+    """HTTP/1.1 y conexiones que no se reutilizan después de unos segundos.
+
+    El cliente de Supabase habla HTTP/2 por defecto. Si esa conexión queda a medias,
+    la siguiente consulta se queda clavada hasta el tope de 120 segundos.
+    """
+    timeout = httpx.Timeout(
+        connect=CONNECT_TIMEOUT_SECONDS,
+        read=READ_TIMEOUT_SECONDS,
+        write=READ_TIMEOUT_SECONDS,
+        pool=CONNECT_TIMEOUT_SECONDS,
+    )
+    limits = httpx.Limits(keepalive_expiry=KEEPALIVE_SECONDS)
+    return httpx.Client(
+        timeout=timeout,
+        limits=limits,
+        follow_redirects=True,
+        http2=False,
+    )
 
 
 @lru_cache
 def get_supabase() -> Client:
-    return create_client(settings.supabase_url, settings.supabase_key)
+    options = ClientOptions(httpx_client=supabase_http_client())
+    return create_client(settings.supabase_url, settings.supabase_key, options)
 
 
 def in_parallel(*fns):

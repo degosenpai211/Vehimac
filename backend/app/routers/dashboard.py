@@ -8,8 +8,11 @@ from app.auth.permissions import PERMISSION_FINANZAS_VER
 from app.auth.user import AuthUser
 from app.database import fetch_all, get_supabase, in_parallel
 from app.utils.dates import today_bolivia
+from app.utils.recent_cache import RecentCache
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+REUSE_SECONDS = 20
+_reads = RecentCache()
 
 PERIODS = {
     "today": 0,
@@ -262,22 +265,29 @@ def _money_kpis(orders: list, finances: list, today: date) -> dict:
 
 
 def _load_workshop_orders(db) -> list:
-    return fetch_all(
-        lambda: db.table("work_orders").select(
-            "id, ot_number, work_description, status, billing_type, total_amount, "
-            "price_charged, advance_amount, advance_recorded, qr_paid, qr_paid_amount, "
-            "estimated_delivery_date, entry_date, updated_at, clients(name)"
+    def load():
+        return fetch_all(
+            lambda: db.table("work_orders").select(
+                "id, ot_number, work_description, status, billing_type, total_amount, "
+                "price_charged, advance_amount, advance_recorded, qr_paid, qr_paid_amount, "
+                "estimated_delivery_date, entry_date, updated_at, clients(name)"
+            )
         )
-    )
+
+    return _reads.get("workshop-orders", REUSE_SECONDS, load)
 
 
 def _load_recent_finances(db, today: date) -> list:
     year_start = date(today.year, 1, 1)
     lookback = today - timedelta(days=90)
     fin_from = min(year_start, lookback)
-    return fetch_all(
-        lambda: db.table("finances").select("type, amount, category, date").gte("date", fin_from.isoformat())
-    )
+
+    def load():
+        return fetch_all(
+            lambda: db.table("finances").select("type, amount, category, date").gte("date", fin_from.isoformat())
+        )
+
+    return _reads.get("recent-finances", REUSE_SECONDS, load)
 
 
 @router.get("/stats")
@@ -358,8 +368,9 @@ def get_finance_kpis(_user: AuthUser = Depends(require_permission(PERMISSION_FIN
 def get_finance_trends(_user: AuthUser = Depends(require_permission(PERMISSION_FINANZAS_VER))):
     db = get_supabase()
     today = today_bolivia()
-    lookback = (today - timedelta(days=90)).isoformat()
-    records = fetch_all(
-        lambda: db.table("finances").select("type, amount, date").gte("date", lookback).lte("date", today.isoformat())
-    )
+    lookback = today - timedelta(days=PERIODS["90d"])
+    records = [
+        row for row in _load_recent_finances(db, today)
+        if (day := _as_date(row.get("date"))) and lookback <= day <= today
+    ]
     return _finance_trends_from(records, today)

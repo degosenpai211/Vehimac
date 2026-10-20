@@ -96,7 +96,7 @@ def upload_photo(db, order_id: str, file: UploadFile) -> dict:
             {"content-type": content_type, "upsert": "false"},
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"No se pudo subir la foto. ¿Existe el bucket ot-photos? ({exc})") from exc
+        raise HTTPException(status_code=500, detail="No se pudo subir la foto. Probá de nuevo.") from exc
 
     inserted = db.table("order_photos").insert({
         "work_order_id": order_id,

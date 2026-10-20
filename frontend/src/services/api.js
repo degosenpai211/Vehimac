@@ -34,9 +34,23 @@ async function parseBody(res) {
   return res.json().catch(() => null)
 }
 
+const NO_CONNECTION = 'No hay conexión. Probá de nuevo.'
+const TRY_AGAIN = 'Falló. Reiniciá e intentá otra vez.'
+const SIGN_IN_AGAIN = 'Tenés que entrar de nuevo.'
+const CHECK_FORM = 'Faltan datos. Revisá lo que cargaste.'
+
+function isTechnical(text) {
+  return /supabase|migration|backend|traceback|exception|sql|column|bucket|stack|jwt|token|vite_|service_role|\bapi\b|internal server|syntax|timeout/i.test(text)
+}
+
 function errorMessage(data, status) {
-  const msg = data?.detail || `Error ${status}`
-  return typeof msg === 'string' ? msg : JSON.stringify(msg)
+  const raw = data?.detail
+  const text = typeof raw === 'string' ? raw.trim() : ''
+  if (status === 401) return text && !isTechnical(text) ? text : SIGN_IN_AGAIN
+  if (status === 403 && text && !isTechnical(text)) return text
+  if (status === 422) return CHECK_FORM
+  if (!text || isTechnical(text) || status >= 500 || status === 0) return TRY_AGAIN
+  return text
 }
 
 async function request(path, options = {}, attempt = 0) {
@@ -54,7 +68,7 @@ async function request(path, options = {}, attempt = 0) {
       await sleep(400)
       return request(path, options, attempt + 1)
     }
-    throw new ApiError('Sin conexión al servidor. Verificá que el backend esté corriendo.', 0)
+    throw new ApiError(NO_CONNECTION, 0)
   }
 
   const data = await parseBody(res)
@@ -81,7 +95,7 @@ async function uploadForm(path, form) {
       body: form,
     })
   } catch {
-    throw new ApiError('Sin conexión al servidor. Verificá que el backend esté corriendo.', 0)
+    throw new ApiError(NO_CONNECTION, 0)
   }
   const data = await parseBody(res)
   if (!res.ok) {
@@ -133,6 +147,7 @@ export const api = {
     const q = new URLSearchParams(params).toString()
     return request(`/work-orders${q ? `?${q}` : ''}`)
   },
+  getCommissionPieces: () => request('/work-orders/commission-pieces'),
   getKanban: (params = {}) => {
     const q = new URLSearchParams()
     Object.entries(params).forEach(([k, v]) => {
@@ -184,12 +199,11 @@ export const api = {
 
   getMechanics: (params = {}) => {
     const q = new URLSearchParams()
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== '' && v != null) q.set(k, v)
-    })
+    Object.entries(params).forEach(([k, v]) => { if (v !== '' && v != null) q.set(k, v) })
     const s = q.toString()
     return request(`/mechanics${s ? `?${s}` : ''}`)
   },
+  getMechanicWorkload: () => request('/mechanics/workload'),
   createMechanic: (data) => request('/mechanics', { method: 'POST', body: JSON.stringify(data) }),
   updateMechanic: (id, data) => request(`/mechanics/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
