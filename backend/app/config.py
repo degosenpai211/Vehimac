@@ -6,10 +6,6 @@ class Settings(BaseSettings):
     supabase_key: str
     cors_origins: str = "http://localhost:5173"
     public_app_url: str = "https://vehimacc.vercel.app"
-    # Vacía = API abierta. Con valor, /api pide login (ver app/auth.py).
-    app_password: str = ""
-    auth_secret: str = ""
-    auth_token_days: int = 30
 
     @property
     def cors_origins_list(self) -> list[str]:
