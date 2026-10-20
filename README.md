@@ -43,6 +43,7 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 # .env: SUPABASE_URL, SUPABASE_KEY, CORS_ORIGINS=http://localhost:5173
+# opcional: APP_PASSWORD=... (activa el login; vacía = API abierta)
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -67,7 +68,13 @@ python migrate.py --data-dir ./datos
 ## Deploy
 
 - **Frontend** → Vercel (`frontend/`, `VITE_API_URL` = URL del backend **sin** `/api`)
-- **Backend** → Railway (`backend/`, variables Supabase + CORS)
+- **Backend** → Railway (`backend/`, variables Supabase + CORS + `APP_PASSWORD`)
 - **DB** → Supabase SQL Editor (migraciones)
 
 Orden de deploy si hay SQL nuevo: **Supabase → Railway → Vercel**.
+
+### Login
+
+Con `APP_PASSWORD` cargada en Railway, todo `/api` pide iniciar sesión con la contraseña del taller (queda público solo el link corto de proforma, `/api/p/{code}`, y `/docs`). La sesión dura 30 días (`AUTH_TOKEN_DAYS`); cambiar la contraseña cierra todas las sesiones. Sin la variable la API queda abierta, como antes.
+
+Para activarlo: desplegar primero el frontend y el backend con este código y **después** cargar `APP_PASSWORD` en Railway. Tests: `cd backend && python -m unittest discover -s tests -t .`
