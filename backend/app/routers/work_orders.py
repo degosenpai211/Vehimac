@@ -7,17 +7,21 @@ from decimal import Decimal
 from app.database import fetch_all, fetch_in, get_supabase, in_parallel
 from app.schemas.work_order import (
     BillingType,
+    CommissionPreview,
     OrderItemCreate,
     QrPaymentCreate,
+    StepAssign,
     WorkOrderCreate,
     WorkOrderResponse,
     WorkOrderStatus,
     WorkOrderUpdate,
 )
 from app.services.billing import compute_billing, order_payable_total
+from app.services.commission_sheet import commission_catalog, commission_figures, stamp_commission
+from app.services.tariff import fixed_rates
 from app.services.orders import _next_ot_number, on_order_entregado, register_advance, register_qr_payment
 from app.services.photos import delete_photo, list_photos, photo_counts_by_order, upload_photo
-from app.utils.dates import today_bolivia
+from app.utils.dates import now_bolivia, today_bolivia
 from app.utils.search import sanitize_search
 
 router = APIRouter(prefix="/work-orders", tags=["Órdenes de trabajo"])
@@ -253,13 +257,36 @@ def _resolve_advance(total: Decimal, requested: Decimal | None) -> Decimal:
     return (total / 2).quantize(Decimal("0.01")) if total > 0 else Decimal("0")
 
 
+def _staff(db) -> list:
+    try:
+        result = db.table("mechanics").select("name, role, labor_efficiency, salary_base, salary_period").eq("active", True).execute()
+    except Exception:
+        result = db.table("mechanics").select("name, role, salary_base, salary_period").eq("active", True).execute()
+    return result.data or []
+
+
+def _stamp_process(process, context: dict):
+    if not isinstance(process, dict) or not process.get("commission"):
+        return process
+    stamped = dict(process)
+    stamped["commission"] = stamp_commission(process.get("commission"), {
+        "people": context["people"],
+        "rates": context["rates"],
+        "steps": process.get("steps") or [],
+    })
+    return stamped
+
+
 def _insert_pieces(db, order_id: str, pieces: list[OrderItemCreate]) -> None:
+    context = {"people": _staff(db), "rates": fixed_rates()}
     db.table("order_items").delete().eq("work_order_id", order_id).execute()
     for i, piece in enumerate(pieces):
         data = piece.model_dump(mode="json")
         data["work_order_id"] = order_id
         data["sort_order"] = i
-        if not data.get("process"):
+        if data.get("process"):
+            data["process"] = _stamp_process(data["process"], context)
+        else:
             data.pop("process", None)
         try:
             db.table("order_items").insert(data).execute()
@@ -331,6 +358,90 @@ def list_work_orders(
     if period:
         orders = [o for o in orders if _matches_period(o, period)]
     return orders
+
+
+@router.get("/commission-pieces")
+def list_commission_pieces():
+    return commission_catalog()
+
+
+@router.post("/commission-preview")
+def preview_commission(body: CommissionPreview):
+    db = get_supabase()
+    figures = commission_figures(body.commission, {
+        "people": _staff(db),
+        "rates": fixed_rates(),
+        "steps": body.steps,
+    })
+    return figures
+
+
+PROCESS_IDS = ("diseno", "soldadura", "afinado", "pintura", "instalacion")
+STEP_STATUSES = ("pendiente", "en_proceso", "completado")
+
+
+def _clock_text(value: str | None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if len(text) >= 16 and text[10:11] == "T" and text[4] == "-" and text[7] == "-":
+        return text[:16]
+    if len(text) == 10 and text[4] == "-" and text[7] == "-":
+        return text
+    raise HTTPException(status_code=400, detail="Faltan datos. Revisá lo que cargaste.")
+
+
+def _steps_with(process: dict, assigned: StepAssign) -> list:
+    by_id = {}
+    for step in process.get("steps") or []:
+        if isinstance(step, dict) and step.get("id"):
+            by_id[step["id"]] = dict(step)
+    status = assigned.status if assigned.status in STEP_STATUSES else None
+    current = by_id.get(assigned.step_id) or {"id": assigned.step_id}
+    current["technician"] = assigned.technician.strip() or None
+    current["assigned_at"] = _clock_text(assigned.assigned_at) or None
+    if status:
+        current["status"] = status
+    elif not current.get("status"):
+        current["status"] = "en_proceso" if current["technician"] else "pendiente"
+    if current.get("status") == "completado":
+        current["completed_at"] = _clock_text(assigned.completed_at) or now_bolivia()
+    else:
+        current["completed_at"] = None
+    by_id[assigned.step_id] = current
+    return [by_id.get(step_id) or {"id": step_id, "status": "pendiente", "technician": None, "assigned_at": None} for step_id in PROCESS_IDS]
+
+
+@router.patch("/{order_id}/pieces/{item_id}/step")
+def assign_piece_step(order_id: UUID, item_id: UUID, body: StepAssign):
+    if body.step_id not in PROCESS_IDS:
+        raise HTTPException(status_code=400, detail="Faltan datos. Revisá lo que cargaste.")
+    db = get_supabase()
+    found = (
+        db.table("order_items")
+        .select("id, process, work_order_id")
+        .eq("id", str(item_id))
+        .eq("work_order_id", str(order_id))
+        .limit(1)
+        .execute()
+    )
+    if not found.data:
+        raise HTTPException(status_code=404, detail="No se encontró la pieza.")
+    process = found.data[0].get("process") or {}
+    if not isinstance(process, dict):
+        process = {}
+    process = dict(process)
+    process["steps"] = _steps_with(process, body)
+    process = _stamp_process(process, {"people": _staff(db), "rates": fixed_rates()})
+    saved = (
+        db.table("order_items")
+        .update({"process": process})
+        .eq("id", str(item_id))
+        .execute()
+    )
+    if not saved.data:
+        raise HTTPException(status_code=400, detail="Falló. Reiniciá e intentá otra vez.")
+    return {"ok": True}
 
 
 @router.get("/kanban")
@@ -475,11 +586,12 @@ def update_work_order(order_id: UUID, order: WorkOrderUpdate):
         neto = Decimal(str(summary["price_charged"]))
         data.update({k: v for k, v in summary.items() if k != "price_charged"})
         data.update(_billing_fields(neto, billing_type))
-        _insert_pieces(db, oid, order.pieces)
         payable = Decimal(str(data["total_amount"]))
         if not old.get("advance_recorded"):
             requested = order.advance_amount if order.advance_amount is not None else Decimal(str(old.get("advance_amount", 0)))
             data["advance_amount"] = float(_resolve_advance(payable, requested))
+        # Recién después de validar el adelanto: un 400 no debe dejar piezas nuevas con el precio viejo.
+        _insert_pieces(db, oid, order.pieces)
     else:
         if order.billing_type is not None and not old.get("delivery_payment_recorded"):
             neto = Decimal(str(old.get("price_charged", 0)))

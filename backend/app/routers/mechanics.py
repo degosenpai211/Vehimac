@@ -2,8 +2,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.database import get_supabase
+from app.database import fetch_all, get_supabase
 from app.schemas.mechanic import MechanicCreate, MechanicResponse, MechanicUpdate
+from app.services.mechanic_load import build_workload, open_orders, unassigned_orders
+from app.services.tariff import fixed_rates, list_changes, remember_change
+from app.utils.dates import today_bolivia
 
 router = APIRouter(prefix="/mechanics", tags=["Mecánicos"])
 
@@ -13,6 +16,7 @@ def _mechanic_row(row: dict) -> dict:
     row.setdefault("salary_mode", "both")
     row.setdefault("salary_period", "monthly")
     row.setdefault("pay_day", 30)
+    row.setdefault("labor_efficiency", 0.6)
     return row
 
 
@@ -51,6 +55,41 @@ def list_mechanics(
     return [_mechanic_row(r) for r in rows]
 
 
+@router.get("/workload")
+def mechanic_workload():
+    db = get_supabase()
+    try:
+        people = fetch_all(
+            lambda: db.table("mechanics").select(
+                "id, name, role, active, labor_efficiency, salary_base, salary_period"
+            ).eq("active", True)
+        )
+    except Exception:
+        people = fetch_all(
+            lambda: db.table("mechanics").select("id, name, role, active, salary_base, salary_period").eq("active", True)
+        )
+    orders = fetch_all(
+        lambda: db.table("work_orders").select(
+            "id, ot_number, status, mechanic, designer, work_description, price_charged, total_amount, entry_date, estimated_delivery_date, updated_at, clients(name)"
+        )
+    )
+    try:
+        items = fetch_all(
+            lambda: db.table("order_items").select(
+                "id, work_order_id, mechanic, designer, part_name, description, amount, process"
+            )
+        )
+    except Exception:
+        items = fetch_all(lambda: db.table("order_items").select("work_order_id, mechanic, process"))
+    source = {"people": people, "orders": orders, "items": items, "rates": fixed_rates()}
+    today = today_bolivia()
+    return {
+        "people": build_workload(source, today),
+        "unassigned": unassigned_orders(source),
+        "open_orders": open_orders(source),
+    }
+
+
 @router.post("", response_model=MechanicResponse, status_code=201, response_model_exclude_unset=True)
 def create_mechanic(body: MechanicCreate):
     db = get_supabase()
@@ -67,12 +106,12 @@ def create_mechanic(body: MechanicCreate):
             if body.role == "admin":
                 raise HTTPException(
                     status_code=400,
-                    detail="Falta el rol administrativo. Ejecutá migration_v15.sql en Supabase.",
+                    detail="Falló. Reiniciá e intentá otra vez.",
                 )
             if body.role != "mechanic":
                 raise HTTPException(
                     status_code=400,
-                    detail="Falta la columna de rol. Ejecutá migration_v10.sql en Supabase.",
+                    detail="Falló. Reiniciá e intentá otra vez.",
                 )
             result = db.table("mechanics").insert({"name": body.name.strip()}).execute()
     if not result.data:
@@ -89,19 +128,30 @@ def update_mechanic(mechanic_id: UUID, body: MechanicUpdate):
         data["name"] = data["name"].strip()
     if not data:
         raise HTTPException(status_code=400, detail="Sin datos para actualizar")
+    previous_efficiency = None
     try:
+        if "labor_efficiency" in data:
+            current = (
+                db.table("mechanics")
+                .select("labor_efficiency")
+                .eq("id", str(mechanic_id))
+                .limit(1)
+                .execute()
+            )
+            if current.data:
+                previous_efficiency = current.data[0].get("labor_efficiency")
         result = db.table("mechanics").update(data).eq("id", str(mechanic_id)).execute()
     except Exception:
         salary_keys = {"salary_base", "salary_mode", "salary_period", "pay_day", "work_started_on"}
         if "work_started_on" in data:
             raise HTTPException(
                 status_code=400,
-                detail="Falta la fecha de inicio de trabajo. Ejecutá migration_v18.sql en Supabase.",
+                detail="Falló. Reiniciá e intentá otra vez.",
             )
-        if salary_keys & set(data):
+        if salary_keys & set(data) or "labor_efficiency" in data:
             raise HTTPException(
                 status_code=400,
-                detail="Faltan columnas de salario. Ejecutá migration_v12.sql en Supabase.",
+                detail="Falló. Reiniciá e intentá otra vez.",
             )
         raise
     if not result.data:
@@ -109,7 +159,19 @@ def update_mechanic(mechanic_id: UUID, body: MechanicUpdate):
     saved = result.data[0]
     if "salary_base" in data:
         _keep_one_salary(db, saved)
+    if previous_efficiency is not None and "labor_efficiency" in data:
+        remember_change(db, {
+            "kind": "efficiency",
+            "mechanic_id": str(mechanic_id),
+            "previous": previous_efficiency,
+            "next": data["labor_efficiency"],
+        })
     return _mechanic_row(saved)
+
+
+@router.get("/{mechanic_id}/rate-history")
+def efficiency_history(mechanic_id: UUID):
+    return list_changes(get_supabase(), {"kind": "efficiency", "mechanic_id": str(mechanic_id)})
 
 
 def _keep_one_salary(db, person: dict) -> None:

@@ -101,6 +101,12 @@ export const api = {
     return request(`/work-orders${q ? `?${q}` : ''}`)
   },
   getCommissionPieces: () => request('/work-orders/commission-pieces'),
+  previewCommission: (data) => request('/work-orders/commission-preview', { method: 'POST', body: JSON.stringify(data) }),
+  assignStep: (orderId, itemId, data) => request(`/work-orders/${orderId}/pieces/${itemId}/step`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  }),
+  getEfficiencyHistory: (id) => request(`/mechanics/${id}/rate-history`),
   getKanban: (params = {}) => {
     const q = new URLSearchParams()
     Object.entries(params).forEach(([k, v]) => {

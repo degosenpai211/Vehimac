@@ -1,19 +1,42 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../services/api'
 
+function peopleOf(payload) {
+  if (Array.isArray(payload)) return payload
+  return payload?.people || []
+}
+
+function plainName(value) {
+  return String(value || '').split('—')[0].split('-')[0].trim()
+}
+
+function matchPerson(people, name) {
+  const key = plainName(name).toLowerCase()
+  if (!key) return null
+  return people.find((row) => plainName(row.name).toLowerCase() === key) || null
+}
+
+function lateNotice(name, late) {
+  if (!late) return ''
+  const label = late === 1 ? 'orden atrasada' : 'órdenes atrasadas'
+  return `${name} tiene ${late} ${label}. Se asigna igual.`
+}
+
 export default function MechanicSearch({ value, onChange, placeholder = 'Mecánico', role }) {
   const [query, setQuery] = useState(value || '')
   const [results, setResults] = useState([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [notice, setNotice] = useState('')
   const ref = useRef(null)
+  const edited = useRef(false)
 
   useEffect(() => {
     setQuery(value || '')
   }, [value])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) return undefined
     const q = query.trim()
     const t = setTimeout(() => {
       setLoading(true)
@@ -36,6 +59,30 @@ export default function MechanicSearch({ value, onChange, placeholder = 'Mecáni
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  useEffect(() => {
+    const name = plainName(query)
+    if (!edited.current || !name) {
+      setNotice('')
+      return undefined
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      api.getMechanicWorkload()
+        .then((payload) => {
+          if (cancelled) return
+          const row = matchPerson(peopleOf(payload), name)
+          setNotice(lateNotice(name, row?.overdue || 0))
+        })
+        .catch(() => {
+          if (!cancelled) setNotice('')
+        })
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [query])
+
   return (
     <div ref={ref} className="relative">
       <input
@@ -44,12 +91,14 @@ export default function MechanicSearch({ value, onChange, placeholder = 'Mecáni
         value={query}
         onChange={(e) => {
           const val = e.target.value
+          edited.current = true
           setQuery(val)
           onChange(val)
           setOpen(true)
         }}
         onFocus={() => setOpen(true)}
       />
+      {notice && <p className="text-xs text-amber-700 mt-1">{notice}</p>}
       {open && (
         <ul className="absolute z-30 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
           {loading && <li className="p-2 text-xs text-slate-400">Buscando...</li>}
@@ -65,6 +114,7 @@ export default function MechanicSearch({ value, onChange, placeholder = 'Mecáni
                   const label = !role && m.role
                     ? `${m.name} — ${m.role === 'designer' ? 'Diseñador' : 'Mecánico'}`
                     : m.name
+                  edited.current = true
                   setQuery(label)
                   onChange(label)
                   setOpen(false)

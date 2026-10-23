@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.services.commission_sheet import normalize_commission
+
 
 class WorkOrderStatus(str, Enum):
     en_proceso = "en_proceso"
@@ -15,6 +17,19 @@ class WorkOrderStatus(str, Enum):
 class BillingType(str, Enum):
     con_factura = "con_factura"
     sin_factura = "sin_factura"
+
+
+class StepAssign(BaseModel):
+    step_id: str
+    technician: str = ""
+    assigned_at: str | None = None
+    status: str | None = None
+    completed_at: str | None = None
+
+
+class CommissionPreview(BaseModel):
+    commission: dict = Field(default_factory=dict)
+    steps: list = Field(default_factory=list)
 
 
 class OrderItemCreate(BaseModel):
@@ -28,9 +43,14 @@ class OrderItemCreate(BaseModel):
     @field_validator("process")
     @classmethod
     def clip_process_observation(cls, value):
-        if isinstance(value, dict) and value.get("observation"):
-            return {**value, "observation": str(value["observation"])[:80]}
-        return value
+        if not isinstance(value, dict):
+            return value
+        cleaned = dict(value)
+        if cleaned.get("observation"):
+            cleaned["observation"] = str(cleaned["observation"])[:80]
+        if "commission" in cleaned:
+            cleaned["commission"] = normalize_commission(cleaned.get("commission"))
+        return cleaned
 
 
 class OrderItemResponse(OrderItemCreate):

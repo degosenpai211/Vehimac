@@ -4,6 +4,10 @@ from datetime import date, datetime, timedelta, timezone
 BOLIVIA_TZ = timezone(timedelta(hours=-4))
 
 
+def now_bolivia() -> str:
+    return datetime.now(BOLIVIA_TZ).strftime("%Y-%m-%dT%H:%M")
+
+
 def today_bolivia() -> date:
     """Fecha de hoy en Bolivia. El servidor corre en UTC y después de las 20:00 ya está en mañana."""
     return datetime.now(BOLIVIA_TZ).date()

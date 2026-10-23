@@ -19,6 +19,7 @@ class MechanicUpdate(BaseModel):
     salary_period: str | None = Field(None, pattern="^(weekly|biweekly|monthly)$")
     pay_day: int | None = Field(None, ge=0, le=31)
     work_started_on: date | None = None
+    labor_efficiency: float | None = Field(None, ge=0.01, le=1)
 
 
 class MechanicResponse(BaseModel):
@@ -31,6 +32,7 @@ class MechanicResponse(BaseModel):
     salary_period: str = "monthly"
     pay_day: int = 30
     work_started_on: date | None = None
+    labor_efficiency: float = 0.6
     created_at: datetime
 
     class Config:

@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { Check, ChevronDown, ChevronRight } from 'lucide-react'
 import MechanicSearch from './MechanicSearch'
+import CommissionRecord, { CommissionSummary } from './CommissionRecord'
 import {
   PROCESS_STEPS,
   STEP_STATUS_META,
   normalizeProcess,
   cycleStepStatus,
+  boliviaNow,
   allStepsCompleted,
   formatProcessDate,
+  participationByPerson,
 } from '../utils/process'
 
 function StepCircle({ index, status, onCycle, readOnly }) {
@@ -49,6 +52,79 @@ function StatusBadge({ status, onCycle, readOnly }) {
   )
 }
 
+const MISSING = 'No se registró'
+
+function assignmentParts(value) {
+  const raw = String(value || '')
+  const day = /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : ''
+  const clock = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw) ? raw.slice(11, 16) : ''
+  return { day, clock }
+}
+
+function joinAssignment(day, clock) {
+  if (!day) return ''
+  if (!clock) return day
+  return `${day}T${clock}`
+}
+
+function AssignmentText({ step }) {
+  const when = assignmentParts(step.assigned_at)
+  return (
+    <p className="text-sm text-slate-600">
+      {step.technician || 'Sin asignar'}
+      {` · ${when.day ? formatProcessDate(when.day) : MISSING}`}
+      {` · ${when.clock || MISSING}`}
+    </p>
+  )
+}
+
+function AssignmentEdit({ step, onTechnician, onWhen }) {
+  const when = assignmentParts(step.assigned_at)
+  const change = (day, clock) => onWhen(joinAssignment(day, clock))
+  return (
+    <div>
+      <div className="grid sm:grid-cols-2 gap-2">
+        <MechanicSearch
+          value={step.technician || ''}
+          onChange={onTechnician}
+          placeholder="Asignar técnico"
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            type="date"
+            className="input text-sm"
+            aria-label="Fecha de asignación"
+            value={when.day}
+            onChange={(e) => change(e.target.value, when.clock)}
+          />
+          <input
+            type="time"
+            className="input text-sm"
+            aria-label="Hora de asignación"
+            value={when.clock}
+            onChange={(e) => change(when.day, e.target.value)}
+          />
+        </div>
+      </div>
+      {!when.clock && <p className="text-xs text-slate-500 mt-1">Hora: {MISSING}</p>}
+    </div>
+  )
+}
+
+function Participation({ process }) {
+  const rows = participationByPerson(process)
+  if (!rows.length) return null
+  return (
+    <ul className="px-3 pb-2 space-y-0.5">
+      {rows.map((row) => (
+        <li key={row.name} className="text-xs text-slate-600">
+          {row.name}: {row.count} de 5 · {row.labels.join(', ')}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export default function PieceProcessFields({ process, onChange = () => {}, readOnly = false, embedded = false }) {
   const p = normalizeProcess(process)
   const [open, setOpen] = useState(false)
@@ -71,7 +147,11 @@ export default function PieceProcessFields({ process, onChange = () => {}, readO
   }
 
   const cycle = (id) => {
-    const steps = p.steps.map((s) => (s.id === id ? { ...s, status: cycleStepStatus(s.status) } : s))
+    const steps = p.steps.map((step) => {
+      if (step.id !== id) return step
+      const status = cycleStepStatus(step.status)
+      return { ...step, status, completed_at: status === 'completado' ? boliviaNow() : '' }
+    })
     patch({ steps })
   }
 
@@ -123,6 +203,8 @@ export default function PieceProcessFields({ process, onChange = () => {}, readO
         </button>
         )}
       </div>
+      <Participation process={p} />
+      <CommissionSummary process={p} />
 
       {open && (
         <div className="px-3 pb-3 pt-1 border-t border-slate-100">
@@ -152,24 +234,13 @@ export default function PieceProcessFields({ process, onChange = () => {}, readO
                       <StatusBadge status={step.status} readOnly={readOnly} onCycle={() => cycle(meta.id)} />
                     </div>
                     {readOnly ? (
-                      <p className="text-sm text-slate-600">
-                        {step.technician || 'Sin asignar'}
-                        {step.assigned_at ? ` · ${formatProcessDate(step.assigned_at)}` : ''}
-                      </p>
+                      <AssignmentText step={step} />
                     ) : (
-                      <div className="grid sm:grid-cols-2 gap-2">
-                        <MechanicSearch
-                          value={step.technician || ''}
-                          onChange={(val) => updateStep(meta.id, 'technician', val)}
-                          placeholder="Asignar técnico"
-                        />
-                        <input
-                          type="datetime-local"
-                          className="input text-sm"
-                          value={step.assigned_at || ''}
-                          onChange={(e) => updateStep(meta.id, 'assigned_at', e.target.value)}
-                        />
-                      </div>
+                      <AssignmentEdit
+                        step={step}
+                        onTechnician={(val) => updateStep(meta.id, 'technician', val)}
+                        onWhen={(value) => updateStep(meta.id, 'assigned_at', value)}
+                      />
                     )}
                   </div>
                 </li>
@@ -177,6 +248,11 @@ export default function PieceProcessFields({ process, onChange = () => {}, readO
             })}
           </ol>
 
+          <CommissionRecord
+            process={p}
+            readOnly={readOnly}
+            onChange={(commission) => patch({ commission })}
+          />
           <div className="pt-2 mt-1 border-t border-slate-100 space-y-2">
             <div>
               <label className="label">Entrega OT</label>
