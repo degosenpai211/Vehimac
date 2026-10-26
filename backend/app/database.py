@@ -13,31 +13,42 @@ READ_TIMEOUT_SECONDS = 20.0
 KEEPALIVE_SECONDS = 5.0
 
 
-def supabase_http_client() -> httpx.Client:
-    """HTTP/1.1 y conexiones que no se reutilizan después de unos segundos.
-
-    El cliente de Supabase habla HTTP/2 por defecto. Si esa conexión queda a medias,
-    la siguiente consulta se queda clavada hasta el tope de 120 segundos.
-    """
-    timeout = httpx.Timeout(
+def request_timeout() -> httpx.Timeout:
+    return httpx.Timeout(
         connect=CONNECT_TIMEOUT_SECONDS,
         read=READ_TIMEOUT_SECONDS,
         write=READ_TIMEOUT_SECONDS,
         pool=CONNECT_TIMEOUT_SECONDS,
     )
+
+
+def supabase_http_client() -> httpx.Client:
+    """HTTP/1.1 y conexiones que no se reutilizan después de unos segundos.
+
+    El cliente de Supabase 2.11 no acepta este cliente inyectado. Los tiempos
+    de espera se pasan por las opciones, para no quedar 120 segundos esperando.
+    """
     limits = httpx.Limits(keepalive_expiry=KEEPALIVE_SECONDS)
     return httpx.Client(
-        timeout=timeout,
+        timeout=request_timeout(),
         limits=limits,
         follow_redirects=True,
         http2=False,
     )
 
 
+def supabase_options() -> ClientOptions:
+    timeout = request_timeout()
+    return ClientOptions(
+        postgrest_client_timeout=timeout,
+        storage_client_timeout=timeout,
+        function_client_timeout=timeout,
+    )
+
+
 @lru_cache
 def get_supabase() -> Client:
-    options = ClientOptions(httpx_client=supabase_http_client())
-    return create_client(settings.supabase_url, settings.supabase_key, options)
+    return create_client(settings.supabase_url, settings.supabase_key, supabase_options())
 
 
 def in_parallel(*fns):
