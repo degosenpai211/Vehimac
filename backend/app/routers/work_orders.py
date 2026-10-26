@@ -7,6 +7,7 @@ from decimal import Decimal
 from app.database import fetch_all, fetch_in, get_supabase, in_parallel
 from app.schemas.work_order import (
     BillingType,
+    AdminHelpUpdate,
     CommissionPreview,
     OrderItemCreate,
     QrPaymentCreate,
@@ -442,6 +443,39 @@ def assign_piece_step(order_id: UUID, item_id: UUID, body: StepAssign):
     if not saved.data:
         raise HTTPException(status_code=400, detail="Falló. Reiniciá e intentá otra vez.")
     return {"ok": True}
+
+
+@router.patch("/{order_id}/pieces/{item_id}/admin-help")
+def mark_admin_help(order_id: UUID, item_id: UUID, body: AdminHelpUpdate):
+    db = get_supabase()
+    found = (
+        db.table("order_items")
+        .select("id, process, work_order_id")
+        .eq("id", str(item_id))
+        .eq("work_order_id", str(order_id))
+        .limit(1)
+        .execute()
+    )
+    if not found.data:
+        raise HTTPException(status_code=404, detail="No se encontró la pieza.")
+    process = found.data[0].get("process") or {}
+    if not isinstance(process, dict):
+        process = {}
+    process = dict(process)
+    commission = process.get("commission") if isinstance(process.get("commission"), dict) else {}
+    commission = dict(commission)
+    commission["admin_help"] = body.enabled
+    process["commission"] = commission
+    process = _stamp_process(process, {"people": _staff(db), "rates": fixed_rates()})
+    saved = (
+        db.table("order_items")
+        .update({"process": process})
+        .eq("id", str(item_id))
+        .execute()
+    )
+    if not saved.data:
+        raise HTTPException(status_code=400, detail="Falló. Reiniciá e intentá otra vez.")
+    return {"ok": True, "admin_help": body.enabled}
 
 
 @router.get("/kanban")

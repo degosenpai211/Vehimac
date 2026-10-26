@@ -11,6 +11,7 @@ WEEKLY_HOURS = 44
 AGUINALDO_PER_HOUR = 1.71477343265053
 LABOR_EFFICIENCY = DEFAULT_EFFICIENCY
 PAY_TASKS = ("mount", "arm", "weld", "finish")
+ADMIN_HELP_MULTIPLIER = 1.25
 
 _COUNT_FIELDS = ("mount_count", "arm_count", "weld_cm", "finish_cm")
 _NAME_FIELDS = ("mount_technician", "arm_technician", "custom_technician")
@@ -79,6 +80,7 @@ def empty_commission() -> dict:
         "custom_technician": "",
         "paint_amount": 0.0,
         "design_size": 0.0,
+        "admin_help": False,
     }
 
 
@@ -146,10 +148,23 @@ def task_pay(piece_id: str, job: dict) -> float:
     })
 
 
+def _admin_help(value) -> bool:
+    return value is True
+
+
+def _with_admin_price(figures: dict, enabled: bool) -> dict:
+    figures["quote"]["admin_help"] = enabled
+    figures["quote"]["admin_multiplier"] = ADMIN_HELP_MULTIPLIER if enabled else 1.0
+    if enabled:
+        figures["quote"]["total"] = float(round(figures["quote"]["total"] * ADMIN_HELP_MULTIPLIER))
+    return figures
+
+
 def normalize_commission(raw) -> dict:
     cleaned = empty_commission()
     if not isinstance(raw, dict):
         return cleaned
+    cleaned["admin_help"] = _admin_help(raw.get("admin_help"))
     piece_id = str(raw.get("piece_id") or "").strip()
     if piece_id == OTHER_PIECE_ID:
         cleaned["piece_id"] = OTHER_PIECE_ID
@@ -216,9 +231,9 @@ def commission_figures(raw, context: dict) -> dict:
         figures["pay"]["other"] = cleaned["custom_amount"]
         figures["pay"]["total"] = cleaned["custom_amount"]
         figures["quote"]["total"] = cleaned["custom_amount"]
-        return figures
+        return _with_admin_price(figures, cleaned["admin_help"])
     if not cleaned["piece_id"]:
-        return figures
+        return _with_admin_price(figures, cleaned["admin_help"])
     names = {
         "mount": cleaned["mount_technician"],
         "arm": cleaned["arm_technician"],
@@ -268,7 +283,7 @@ def commission_figures(raw, context: dict) -> dict:
     base = sum(figures["quote"][key] for key in ("mount", "arm", "weld", "finish", "paint"))
     figures["quote"]["total"] = float(round(base * design["multiplier"] + design["amount"]))
     figures["pay"]["total"] = round(sum(figures["pay"][key] for key in ("mount", "arm", "weld", "finish", "other")), 2)
-    return figures
+    return _with_admin_price(figures, cleaned["admin_help"])
 
 
 def stamp_commission(raw, context: dict) -> dict:

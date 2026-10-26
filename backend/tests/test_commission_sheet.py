@@ -123,6 +123,35 @@ class CommissionSheetTests(TestCase):
         self.assertEqual(figures["quote"]["paint"], 80)
         self.assertGreater(figures["quote"]["total"], figures["pay"]["total"])
 
+    def test_admin_help_raises_the_customer_price_by_a_quarter(self):
+        piece = {
+            "piece_id": "acc_internos",
+            "mount_count": 100,
+            "mount_technician": "Bruno",
+        }
+        people = [{"name": "Bruno", "labor_efficiency": 0.6, "salary_base": 850, "salary_period": "weekly"}]
+        plain = commission_figures(piece, {"people": people})
+        helped = commission_figures({**piece, "admin_help": True}, {"people": people})
+        self.assertEqual(plain["quote"]["total"], 100)
+        self.assertEqual(helped["quote"]["total"], 125)
+        self.assertEqual(helped["pay"]["total"], plain["pay"]["total"])
+        self.assertTrue(helped["quote"]["admin_help"])
+
+    def test_admin_help_also_raises_another_piece(self):
+        figures = commission_figures({
+            "piece_id": "otra",
+            "custom_amount": 80,
+            "admin_help": True,
+        }, {})
+        self.assertEqual(figures["quote"]["total"], 100)
+        self.assertEqual(figures["pay"]["total"], 80)
+
+    def test_admin_help_flag_is_kept(self):
+        cleaned = normalize_commission({"piece_id": "acc_internos", "admin_help": True})
+        self.assertTrue(cleaned["admin_help"])
+        cleared = normalize_commission({"piece_id": "acc_internos", "admin_help": False})
+        self.assertFalse(cleared["admin_help"])
+
     def test_empty_or_unpaid_task_is_zero(self):
         self.assertEqual(task_pay("acc_internos", {"task": "mount", "quantity": 1}), 11.68)
         self.assertEqual(task_pay("acc_internos", {"task": "mount", "quantity": 0}), 0)

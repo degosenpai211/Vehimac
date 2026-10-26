@@ -121,6 +121,7 @@ function quoteSignature(commission, steps) {
     mount_technician: commission.mount_technician,
     arm_technician: commission.arm_technician,
     custom_amount: commission.custom_amount,
+    admin_help: commission.admin_help === true,
     steps: (steps || []).map((step) => ({ id: step.id, technician: step.technician })),
   })
 }
@@ -145,6 +146,7 @@ function MoneyPreview({ commission, steps, active }) {
   return (
     <p className="text-sm text-slate-700">
       Su parte {formatCurrency(figures.pay.total)} · Cobro al cliente {formatCurrency(figures.quote?.total || 0)}
+      {figures.quote?.admin_help ? ' · con multiplicador 25%' : ''}
     </p>
   )
 }
@@ -201,7 +203,23 @@ export default function CommissionRecord({ process, readOnly = false, onChange }
           </div>
         </div>
       )}
-      {(isCatalog || isOther) && <MoneyPreview commission={commission} steps={process.steps} active />}
+      {(isCatalog || isOther) && (
+        <div className="space-y-2">
+          <MoneyPreview commission={commission} steps={process.steps} active />
+          {!readOnly && (
+            <button
+              type="button"
+              className={commission.admin_help ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'}
+              onClick={() => patch({ admin_help: !commission.admin_help })}
+            >
+              Multiplicador
+            </button>
+          )}
+          <p className="text-xs text-slate-500">
+            Si lo hace un administrativo, el cobro al cliente sube 25%. La parte del mecánico no cambia.
+          </p>
+        </div>
+      )}
       {isOther && (
         <div className="space-y-2">
           <div>

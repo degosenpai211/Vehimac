@@ -424,10 +424,13 @@ def open_orders(source: dict) -> list[dict]:
         pieces = []
         for item in grouped.get(oid, []):
             part = (item.get("part_name") or item.get("description") or "").strip()
+            process = item.get("process") if isinstance(item.get("process"), dict) else {}
+            commission = process.get("commission") if isinstance(process.get("commission"), dict) else {}
             pieces.append({
                 "id": str(item.get("id") or ""),
                 "part_name": part or "Pieza",
-                "steps": _public_steps(item.get("process")),
+                "admin_help": commission.get("admin_help") is True,
+                "steps": _public_steps(process),
             })
         rows.append({
             "id": oid,

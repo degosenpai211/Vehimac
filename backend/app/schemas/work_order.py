@@ -27,6 +27,10 @@ class StepAssign(BaseModel):
     completed_at: str | None = None
 
 
+class AdminHelpUpdate(BaseModel):
+    enabled: bool
+
+
 class CommissionPreview(BaseModel):
     commission: dict = Field(default_factory=dict)
     steps: list = Field(default_factory=list)

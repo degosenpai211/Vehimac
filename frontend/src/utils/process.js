@@ -49,6 +49,7 @@ export function emptyCommission() {
     custom_technician: '',
     paint_amount: 0,
     design_size: 0,
+    admin_help: false,
   }
 }
 

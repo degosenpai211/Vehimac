@@ -18,8 +18,28 @@ function AssignForm({ person, board, onChanged }) {
   const [day, setDay] = useState('')
   const [clock, setClock] = useState('')
   const [saving, setSaving] = useState(false)
+  const [marking, setMarking] = useState(false)
   const order = (board || []).find((row) => row.id === orderId)
   const pieces = order?.pieces || []
+  const piece = pieces.find((row) => row.id === itemId)
+  const adminHelp = piece?.admin_help === true
+
+  const markHelp = async () => {
+    if (!orderId || !itemId) {
+      toast('Faltan datos. Revisá lo que cargaste.', 'error')
+      return
+    }
+    setMarking(true)
+    try {
+      await api.markAdminHelp(orderId, itemId, !adminHelp)
+      toast(adminHelp ? 'El cobro volvió al precio de la hoja.' : 'El cobro al cliente sube 25%.', 'success')
+      onChanged?.()
+    } catch (error) {
+      toast(error.message, 'error')
+    } finally {
+      setMarking(false)
+    }
+  }
 
   const assign = async () => {
     if (!orderId || !itemId || !stepId || !day) {
@@ -72,6 +92,17 @@ function AssignForm({ person, board, onChanged }) {
         <button type="button" className="btn-primary btn-sm" disabled={saving} onClick={assign}>
           {saving ? 'Guardando…' : 'Asignar'}
         </button>
+        <button
+          type="button"
+          className={adminHelp ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'}
+          disabled={marking || !itemId}
+          onClick={markHelp}
+        >
+          {marking ? 'Guardando…' : 'Multiplicador'}
+        </button>
+        <p className="text-xs text-slate-500">
+          Si el mecánico no puede y lo hace un administrativo, el cobro al cliente de esa pieza sube 25%.
+        </p>
       </div>
     </section>
   )
