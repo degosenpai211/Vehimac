@@ -153,10 +153,16 @@ def _admin_help(value) -> bool:
 
 
 def _with_admin_price(figures: dict, enabled: bool) -> dict:
+    base = float(figures["quote"]["total"])
+    figures["quote"]["piece_total"] = base
     figures["quote"]["admin_help"] = enabled
     figures["quote"]["admin_multiplier"] = ADMIN_HELP_MULTIPLIER if enabled else 1.0
-    if enabled:
-        figures["quote"]["total"] = float(round(figures["quote"]["total"] * ADMIN_HELP_MULTIPLIER))
+    if not enabled:
+        figures["quote"]["increase"] = 0.0
+        return figures
+    raised = float(round(base * ADMIN_HELP_MULTIPLIER))
+    figures["quote"]["total"] = raised
+    figures["quote"]["increase"] = float(round(raised - base))
     return figures
 
 

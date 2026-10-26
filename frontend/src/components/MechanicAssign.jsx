@@ -1,8 +1,45 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, formatOT } from '../services/api'
+import { api, formatCurrency, formatOT } from '../services/api'
 import { PROCESS_STEPS, boliviaNow } from '../utils/process'
 import { useToast } from './Toast'
+
+function pieceLacksMechanic(piece) {
+  return PROCESS_STEPS.some((step) => {
+    const found = (piece.steps || []).find((row) => row.id === step.id)
+    return !String(found?.technician || '').trim()
+  })
+}
+
+function orderLacksMechanic(order) {
+  if ((order.status || 'en_proceso') !== 'en_proceso') return false
+  const pieces = order.pieces || []
+  if (!pieces.length) return true
+  return pieces.some(pieceLacksMechanic)
+}
+
+function orderMatches(order, query) {
+  const text = query.trim().toLowerCase()
+  if (!text) return false
+  const compact = text.replace(/\s+/g, '')
+  const number = String(order.ot_number ?? '')
+  const digits = compact.startsWith('ot') ? compact.slice(2) : compact
+  if (/^\d+$/.test(digits) && (compact.startsWith('ot') || compact === digits)) {
+    return number === digits || number.startsWith(digits)
+  }
+  return String(order.client_name || '').toLowerCase().includes(text)
+}
+
+function raisedPieces(board) {
+  const rows = []
+  for (const order of board || []) {
+    if ((order.status || 'en_proceso') !== 'en_proceso') continue
+    for (const piece of order.pieces || []) {
+      if (piece.admin_help) rows.push({ order, piece })
+    }
+  }
+  return rows
+}
 
 function joinWhen(day, clock) {
   if (!day) return ''
@@ -17,8 +54,14 @@ function AssignForm({ person, board, onChanged }) {
   const [stepId, setStepId] = useState('soldadura')
   const [day, setDay] = useState('')
   const [clock, setClock] = useState('')
+  const [query, setQuery] = useState('')
   const [saving, setSaving] = useState(false)
   const [marking, setMarking] = useState(false)
+  const matches = useMemo(() => {
+    if (!query.trim()) return []
+    return (board || []).filter((row) => orderLacksMechanic(row) && orderMatches(row, query))
+  }, [board, query])
+  const raised = useMemo(() => raisedPieces(board), [board])
   const order = (board || []).find((row) => row.id === orderId)
   const pieces = order?.pieces || []
   const piece = pieces.find((row) => row.id === itemId)
@@ -68,12 +111,38 @@ function AssignForm({ person, board, onChanged }) {
       <h3 className="text-base font-semibold text-slate-900">Asignar</h3>
       <p className="text-xs text-slate-500 mb-3">Queda en la orden, con su nombre, fecha y hora.</p>
       <div className="space-y-2">
-        <select className="input text-sm" value={orderId} onChange={(event) => { setOrderId(event.target.value); setItemId('') }}>
-          <option value="">Orden en curso</option>
-          {(board || []).map((row) => (
-            <option key={row.id} value={row.id}>{formatOT(row)} · {row.client_name || 'Sin cliente'}</option>
-          ))}
-        </select>
+        <input
+          className="input text-sm"
+          placeholder="OT80 o nombre del cliente"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setOrderId('')
+            setItemId('')
+          }}
+        />
+        {!orderId && query.trim() && (
+          <ul className="max-h-60 overflow-y-auto rounded-lg border border-slate-200">
+            {matches.length === 0 && (
+              <li className="px-3 py-2 text-sm text-slate-500">Sin órdenes en proceso sin mecánico.</li>
+            )}
+            {matches.map((row) => (
+              <li key={row.id}>
+                <button
+                  type="button"
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                  onClick={() => {
+                    setOrderId(row.id)
+                    setItemId('')
+                    setQuery(`${formatOT(row)} · ${row.client_name || 'Sin cliente'}`)
+                  }}
+                >
+                  {formatOT(row)} · {row.client_name || 'Sin cliente'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <select className="input text-sm" value={itemId} onChange={(event) => setItemId(event.target.value)} disabled={!order}>
           <option value="">Pieza</option>
           {pieces.map((piece) => (
@@ -100,9 +169,24 @@ function AssignForm({ person, board, onChanged }) {
         >
           {marking ? 'Guardando…' : 'Multiplicador'}
         </button>
-        <p className="text-xs text-slate-500">
-          Si el mecánico no puede y lo hace un administrativo, el cobro al cliente de esa pieza sube 25%.
-        </p>
+        {adminHelp && Number(piece?.quote_total) > 0 && (
+          <p className="text-sm text-slate-700">
+            Precio de la pieza {formatCurrency(piece.piece_total)} → {formatCurrency(piece.quote_total)}
+          </p>
+        )}
+        {raised.length > 0 && (
+          <div>
+            <p className="text-sm font-semibold text-slate-800">Piezas con 25% más</p>
+            <ul className="mt-1 space-y-1">
+              {raised.map(({ order: row, piece: item }) => (
+                <li key={item.id || `${row.id}-${item.part_name}`} className="text-sm text-slate-600">
+                  {formatOT(row)} · {item.part_name}
+                  {Number(item.quote_total) > 0 ? ` · ${formatCurrency(item.piece_total)} → ${formatCurrency(item.quote_total)}` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </section>
   )

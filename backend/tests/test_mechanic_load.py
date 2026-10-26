@@ -1,7 +1,7 @@
 from datetime import date
 from unittest import TestCase
 
-from app.services.mechanic_load import build_workload
+from app.services.mechanic_load import build_workload, open_orders
 
 TODAY = date(2026, 10, 13)
 
@@ -349,3 +349,50 @@ class MechanicLoadTests(TestCase):
         self.assertEqual(order["pay"]["total"], 10)
         self.assertEqual(order["time"]["weld"]["allowed"], 40)
         self.assertEqual(order["time"]["weld"]["actual"], 90)
+
+    def test_open_order_multiplier_raises_only_the_piece_price(self):
+        people = [{
+            "name": "Bruno",
+            "labor_efficiency": 0.6,
+            "salary_base": 850,
+            "salary_period": "weekly",
+        }]
+        orders = [
+            {"id": "o1", "ot_number": 80, "status": "en_proceso", "clients": {"name": "Ana"}},
+            {"id": "o2", "ot_number": 81, "status": "terminado", "clients": {"name": "Ana"}},
+            {"id": "o3", "ot_number": 82, "status": "entregado", "clients": {"name": "Ana"}},
+        ]
+        items = [
+            {
+                "id": "i1",
+                "work_order_id": "o1",
+                "part_name": "Puerta",
+                "process": {"commission": {
+                    "piece_id": "acc_internos",
+                    "mount_count": 100,
+                    "mount_technician": "Bruno",
+                    "admin_help": True,
+                }, "steps": []},
+            },
+            {
+                "id": "i2",
+                "work_order_id": "o1",
+                "part_name": "Capó",
+                "process": {"commission": {
+                    "piece_id": "acc_internos",
+                    "mount_count": 100,
+                    "admin_help": False,
+                }, "steps": []},
+            },
+        ]
+        rows = open_orders({"people": people, "orders": orders, "items": items, "rates": {}})
+        self.assertEqual({row["id"] for row in rows}, {"o1", "o2"})
+        door = next(row for row in rows if row["id"] == "o1")["pieces"][0]
+        self.assertEqual(door["piece_total"], 100)
+        self.assertEqual(door["quote_total"], 125)
+        self.assertEqual(door["increase"], 25)
+        self.assertTrue(door["admin_help"])
+        hood = next(row for row in rows if row["id"] == "o1")["pieces"][1]
+        self.assertEqual(hood["quote_total"], 0)
+        self.assertEqual(hood["increase"], 0)
+        self.assertFalse(hood["admin_help"])

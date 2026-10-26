@@ -133,7 +133,10 @@ class CommissionSheetTests(TestCase):
         plain = commission_figures(piece, {"people": people})
         helped = commission_figures({**piece, "admin_help": True}, {"people": people})
         self.assertEqual(plain["quote"]["total"], 100)
+        self.assertEqual(plain["quote"]["increase"], 0)
+        self.assertEqual(helped["quote"]["piece_total"], 100)
         self.assertEqual(helped["quote"]["total"], 125)
+        self.assertEqual(helped["quote"]["increase"], 25)
         self.assertEqual(helped["pay"]["total"], plain["pay"]["total"])
         self.assertTrue(helped["quote"]["admin_help"])
 

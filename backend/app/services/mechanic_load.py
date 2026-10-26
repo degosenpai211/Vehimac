@@ -1,6 +1,12 @@
 from datetime import datetime, date
 
-from app.services.commission_sheet import OTHER_PIECE_ID, normalize_commission, piece_minutes, task_pay
+from app.services.commission_sheet import (
+    OTHER_PIECE_ID,
+    commission_figures,
+    normalize_commission,
+    piece_minutes,
+    task_pay,
+)
 from app.services.salary import technician_matches
 from app.services.tariff import hour_for, merge_rates, pay_profile
 from app.utils.dates import bolivia_day
@@ -395,6 +401,24 @@ def build_workload(source: dict, today: date) -> list[dict]:
     return rows
 
 
+def _raised_piece_price(commission: dict, process: dict, source: dict) -> dict:
+    blank = {"piece_total": 0.0, "quote_total": 0.0, "increase": 0.0}
+    if commission.get("admin_help") is not True:
+        return blank
+    applied = commission.get("applied") if isinstance(commission.get("applied"), dict) else {}
+    quote = applied.get("quote") if isinstance(applied.get("quote"), dict) else {}
+    if "piece_total" not in quote:
+        figures = commission_figures(commission, {
+            "people": source.get("people") or [],
+            "rates": source.get("rates") or {},
+            "steps": process.get("steps") or [],
+        })
+        quote = figures.get("quote") or {}
+    base = _money(quote.get("piece_total"))
+    total = _money(quote.get("total"))
+    return {"piece_total": base, "quote_total": total, "increase": _money(total - base)}
+
+
 def _public_steps(process) -> list[dict]:
     found = []
     if not isinstance(process, dict):
@@ -426,16 +450,21 @@ def open_orders(source: dict) -> list[dict]:
             part = (item.get("part_name") or item.get("description") or "").strip()
             process = item.get("process") if isinstance(item.get("process"), dict) else {}
             commission = process.get("commission") if isinstance(process.get("commission"), dict) else {}
+            price = _raised_piece_price(commission, process, source)
             pieces.append({
                 "id": str(item.get("id") or ""),
                 "part_name": part or "Pieza",
                 "admin_help": commission.get("admin_help") is True,
+                "piece_total": price["piece_total"],
+                "quote_total": price["quote_total"],
+                "increase": price["increase"],
                 "steps": _public_steps(process),
             })
         rows.append({
             "id": oid,
             "ot_number": order.get("ot_number"),
             "client_name": client_name or "",
+            "status": order.get("status") or "en_proceso",
             "pieces": pieces,
         })
     rows.sort(key=lambda row: row.get("ot_number") or 0, reverse=True)

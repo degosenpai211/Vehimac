@@ -146,7 +146,7 @@ function MoneyPreview({ commission, steps, active }) {
   return (
     <p className="text-sm text-slate-700">
       Su parte {formatCurrency(figures.pay.total)} · Cobro al cliente {formatCurrency(figures.quote?.total || 0)}
-      {figures.quote?.admin_help ? ' · con multiplicador 25%' : ''}
+      {figures.quote?.admin_help ? ` · Precio de la pieza ${formatCurrency(figures.quote.piece_total)} → ${formatCurrency(figures.quote.total)}` : ''}
     </p>
   )
 }
@@ -215,9 +215,6 @@ export default function CommissionRecord({ process, readOnly = false, onChange }
               Multiplicador
             </button>
           )}
-          <p className="text-xs text-slate-500">
-            Si lo hace un administrativo, el cobro al cliente sube 25%. La parte del mecánico no cambia.
-          </p>
         </div>
       )}
       {isOther && (
