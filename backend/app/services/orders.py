@@ -8,6 +8,10 @@ from uuid import UUID
 from app.database import get_supabase
 from app.services.billing import order_payable_total
 
+ADVANCE_LABEL = "Adelanto"
+QR_PAYMENT_LABEL = "Pago QR"
+FINAL_PAYMENT_LABEL = "Cobro final"
+
 
 def _next_ot_number(db) -> int:
     result = db.table("work_orders").select("ot_number").order("ot_number", desc=True).limit(1).execute()
@@ -57,14 +61,14 @@ def register_advance(order_id: UUID, force: bool = False) -> None:
         db.table("finances")
         .select("id")
         .eq("work_order_id", oid)
-        .ilike("description", "%Adelanto%")
+        .ilike("description", f"%{ADVANCE_LABEL}%")
         .execute()
     )
     if not existing.data:
         label = _order_label(order)
         db.table("finances").insert({
             "type": "ingreso",
-            "description": f"Adelanto {label}",
+            "description": f"{ADVANCE_LABEL} {label}",
             "amount": float(advance),
             "category": "Adelantos",
             "date": date.today().isoformat(),
@@ -110,7 +114,7 @@ def on_order_entregado(order_id: UUID) -> None:
         label = _order_label(order)
         db.table("finances").insert({
             "type": "ingreso",
-            "description": f"Cobro final {label}",
+            "description": f"{FINAL_PAYMENT_LABEL} {label}",
             "amount": float(remaining),
             "category": "Servicios",
             "date": date.today().isoformat(),
@@ -154,7 +158,7 @@ def register_qr_payment(order_id: UUID, bank: str, amount: Decimal | None = None
     label = _order_label(order)
     db.table("finances").insert({
         "type": "ingreso",
-        "description": f"Pago QR {label} ({bank})",
+        "description": f"{QR_PAYMENT_LABEL} {label} ({bank})",
         "amount": float(paid),
         "category": "QR",
         "date": date.today().isoformat(),
@@ -167,3 +171,57 @@ def register_qr_payment(order_id: UUID, bank: str, amount: Decimal | None = None
         "qr_paid_amount": float(paid),
         "qr_paid_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", oid).execute()
+
+
+def release_order_payment(db, movement: dict) -> None:
+    """Al borrar un cobro que el sistema anotó por una OT, la OT deja de figurar cobrada en esa parte."""
+    order_id = movement.get("work_order_id")
+    if not order_id or movement.get("type") != "ingreso":
+        return
+    description = movement.get("description") or ""
+    order_result = (
+        db.table("work_orders")
+        .select("client_id, advance_recorded")
+        .eq("id", order_id)
+        .execute()
+    )
+    if not order_result.data:
+        return
+    order = order_result.data[0]
+    if description.startswith(ADVANCE_LABEL):
+        _release_advance(db, {"order_id": order_id, "order": order, "movement": movement})
+        return
+    if description.startswith(QR_PAYMENT_LABEL):
+        _release_qr_payment(db, order_id)
+        return
+    if description.startswith(FINAL_PAYMENT_LABEL):
+        _release_final_payment(db, order_id)
+
+
+def _release_advance(db, payment: dict) -> None:
+    order = payment["order"]
+    if not order.get("advance_recorded"):
+        return
+    order_id = payment["order_id"]
+    db.table("work_orders").update({"advance_recorded": False}).eq("id", order_id).execute()
+    client_id = order.get("client_id")
+    if not client_id:
+        return
+    amount = Decimal(str(payment["movement"].get("amount") or 0))
+    _update_client_balance(db, client_id, amount)
+
+
+def _release_qr_payment(db, order_id: str) -> None:
+    db.table("work_orders").update({
+        "qr_paid": False,
+        "qr_bank": None,
+        "qr_paid_amount": 0,
+        "qr_paid_at": None,
+    }).eq("id", order_id).execute()
+
+
+def _release_final_payment(db, order_id: str) -> None:
+    db.table("work_orders").update({
+        "delivery_payment_recorded": False,
+        "finance_recorded": False,
+    }).eq("id", order_id).execute()
