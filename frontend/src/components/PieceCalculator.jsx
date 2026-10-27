@@ -43,13 +43,13 @@ export default function PieceCalculator() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="group relative inline-flex min-h-[44px] items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-400 px-5 py-2.5 text-sm font-bold text-amber-950 shadow-lg shadow-amber-400/40 ring-1 ring-amber-200 transition hover:shadow-amber-300/70 hover:brightness-105"
+        aria-label="Calculadora"
+        className="group relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-400 text-amber-950 shadow-lg shadow-amber-400/40 ring-1 ring-amber-200 transition hover:shadow-amber-300/70 hover:brightness-105"
       >
         <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/70 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-        <Calculator size={18} className="relative" />
-        <span className="relative">Calculadora</span>
+        <Calculator size={20} className="relative" />
       </button>
-      <Modal open={open} onClose={() => setOpen(false)} title="Calculadora" size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title="Cotización" size="lg">
         <p className="mb-3 text-sm text-slate-500">No se guarda en la orden. Sirve para ver cuánto costaría la pieza.</p>
         <label className="label">Quién la haría</label>
         <MechanicSearch value={maker} onChange={chooseMaker} placeholder="Nombre, para usar su hora" />

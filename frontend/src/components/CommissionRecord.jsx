@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import MechanicSearch from './MechanicSearch'
 import { api, formatCurrency } from '../services/api'
 import { OTHER_PIECE_ID, emptyCommission } from '../utils/process'
 
 const NOTE_LIMIT = 120
 const TASKS = [
-  { field: 'mount_count', label: 'Desmontado/montado', unit: 'Bs al cliente', technician: 'mount_technician', once: true },
-  { field: 'arm_count', label: 'Desarmado/armado', unit: 'Bs al cliente', technician: 'arm_technician', once: true },
+  { field: 'mount_count', label: 'Desmontado/montado', unit: 'Bs al cliente', technician: 'mount_technician' },
+  { field: 'arm_count', label: 'Desarmado/armado', unit: 'Bs al cliente', technician: 'arm_technician' },
   { field: 'weld_cm', label: 'Soldadura', unit: 'cm', stepId: 'soldadura' },
   { field: 'finish_cm', label: 'Afinado', unit: 'cm', stepId: 'afinado' },
 ]
@@ -27,6 +27,54 @@ function readQuantity(text) {
   const number = Number(String(text).replace(',', '.'))
   if (!Number.isFinite(number) || number < 0) return 0
   return Math.round(number * 100) / 100
+}
+
+function formatWholeBolivianos(amount) {
+  const rounded = Math.round(Number(amount) || 0)
+  return new Intl.NumberFormat('es-BO', {
+    style: 'currency',
+    currency: 'BOB',
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  }).format(rounded)
+}
+
+function NumberField({ field }) {
+  const { value, max, onCommit } = field
+  const [text, setText] = useState(value ? String(value) : '')
+  const focused = useRef(false)
+
+  useEffect(() => {
+    if (focused.current) return
+    setText(value ? String(value) : '')
+  }, [value])
+
+  const commit = (raw) => {
+    const next = readQuantity(raw)
+    const limited = max == null ? next : Math.min(next, max)
+    onCommit(limited)
+    setText(limited ? String(limited) : '')
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      className="input text-sm"
+      value={text}
+      onFocus={() => { focused.current = true }}
+      onBlur={() => {
+        focused.current = false
+        commit(text)
+      }}
+      onChange={(event) => setText(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter') return
+        event.preventDefault()
+        commit(text)
+      }}
+    />
+  )
 }
 
 function stepTechnician(process, stepId) {
@@ -64,7 +112,7 @@ function choosePiece(pieceId) {
 }
 
 function QuantityRow({ record }) {
-  const { task, process, commission, readOnly, onPatch } = record
+  const { task, process, commission, readOnly, onPatch, hidePerson } = record
   const value = commission[task.field] || 0
   return (
     <div className="space-y-1">
@@ -72,21 +120,12 @@ function QuantityRow({ record }) {
       {readOnly ? (
         <p className="text-sm text-slate-700">{value}</p>
       ) : (
-        <input
-          type="number"
-          min="0"
-          step="0.1"
-          className="input text-sm"
-          value={value}
-          onChange={(event) => onPatch({ [task.field]: readQuantity(event.target.value) })}
-        />
+        <NumberField field={{ value, onCommit: (amount) => onPatch({ [task.field]: amount }) }} />
       )}
-      {task.once && (
-        <p className="text-xs text-slate-500">Si hay un monto, cobra una vez el tiempo de la hoja.</p>
-      )}
-      {task.stepId ? (
+      {!hidePerson && task.stepId && (
         <p className="text-xs text-slate-500">Lo cobra {stepTechnician(process, task.stepId)}, con su efectividad.</p>
-      ) : (
+      )}
+      {!hidePerson && !task.stepId && (
         readOnly ? (
           <p className="text-xs text-slate-500">{commission[task.technician] || 'Sin asignar'}</p>
         ) : (
@@ -138,24 +177,24 @@ function MoneyPreview({ commission, steps, active, prominent = false }) {
   if (!prominent) {
     return (
       <p className="text-sm text-slate-700">
-        Su parte {formatCurrency(figures.pay.total)} · Cobro al cliente {formatCurrency(figures.quote?.total || 0)}
-        {figures.quote?.admin_help ? ` · Precio de la pieza ${formatCurrency(figures.quote.piece_total)} → ${formatCurrency(figures.quote.total)}` : ''}
+        Mano de Obra {formatCurrency(figures.pay.total)} · Cotización {formatWholeBolivianos(figures.quote?.total || 0)}
+        {figures.quote?.admin_help ? ` · Precio de la pieza ${formatWholeBolivianos(figures.quote.piece_total)} → ${formatWholeBolivianos(figures.quote.total)}` : ''}
       </p>
     )
   }
   return (
     <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-900 p-4 text-white">
       <div>
-        <p className="text-xs text-slate-300">Cobro al cliente</p>
-        <p className="text-2xl font-bold tabular-nums">{formatCurrency(figures.quote?.total || 0)}</p>
+        <p className="text-xs text-slate-300">Cotización</p>
+        <p className="text-2xl font-bold tabular-nums">{formatWholeBolivianos(figures.quote?.total || 0)}</p>
       </div>
       <div>
-        <p className="text-xs text-slate-300">Su parte</p>
+        <p className="text-xs text-slate-300">Mano de Obra</p>
         <p className="text-2xl font-bold tabular-nums">{formatCurrency(figures.pay.total)}</p>
       </div>
       {figures.quote?.admin_help && (
         <p className="col-span-2 text-xs text-amber-200">
-          Precio de la pieza {formatCurrency(figures.quote.piece_total)} → {formatCurrency(figures.quote.total)}
+          Precio de la pieza {formatWholeBolivianos(figures.quote.piece_total)} → {formatWholeBolivianos(figures.quote.total)}
         </p>
       )}
     </div>
@@ -196,7 +235,7 @@ export default function CommissionRecord({ process, readOnly = false, onChange, 
       {isCatalog && TASKS.map((task) => (
         <QuantityRow
           key={task.field}
-          record={{ task, process, commission, readOnly, onPatch: patch }}
+          record={{ task, process, commission, readOnly, onPatch: patch, hidePerson: standalone }}
         />
       ))}
       {isCatalog && (
@@ -204,13 +243,13 @@ export default function CommissionRecord({ process, readOnly = false, onChange, 
           <div>
             <label className="label">Pintura (Bs al cliente)</label>
             {readOnly ? <p className="text-sm text-slate-700">{commission.paint_amount || 0}</p> : (
-              <input type="number" min="0" step="1" className="input text-sm" value={commission.paint_amount || 0} onChange={(event) => patch({ paint_amount: readQuantity(event.target.value) })} />
+              <NumberField field={{ value: commission.paint_amount || 0, onCommit: (amount) => patch({ paint_amount: amount }) }} />
             )}
           </div>
           <div>
             <label className="label">Diseño (0 a 3)</label>
             {readOnly ? <p className="text-sm text-slate-700">{commission.design_size || 0}</p> : (
-              <input type="number" min="0" max="3" step="0.1" className="input text-sm" value={commission.design_size || 0} onChange={(event) => patch({ design_size: readQuantity(event.target.value) })} />
+              <NumberField field={{ value: commission.design_size || 0, max: 3, onCommit: (amount) => patch({ design_size: amount }) }} />
             )}
             <p className="text-xs text-slate-500">1 pequeño, 2 mediano, 3 grande. No se le paga al técnico.</p>
           </div>
@@ -237,14 +276,7 @@ export default function CommissionRecord({ process, readOnly = false, onChange, 
             {readOnly ? (
               <p className="text-sm text-slate-700">{commission.custom_amount || 0}</p>
             ) : (
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className="input text-sm"
-                value={commission.custom_amount || 0}
-                onChange={(event) => patch({ custom_amount: readQuantity(event.target.value) })}
-              />
+              <NumberField field={{ value: commission.custom_amount || 0, onCommit: (amount) => patch({ custom_amount: amount }) }} />
             )}
           </div>
           <div>
@@ -260,7 +292,7 @@ export default function CommissionRecord({ process, readOnly = false, onChange, 
               />
             )}
           </div>
-          {readOnly ? (
+          {!standalone && (readOnly ? (
             <p className="text-xs text-slate-500">{commission.custom_technician || 'Sin asignar'}</p>
           ) : (
             <MechanicSearch
@@ -268,7 +300,7 @@ export default function CommissionRecord({ process, readOnly = false, onChange, 
               onChange={(name) => patch({ custom_technician: name })}
               placeholder="Quién lo hizo"
             />
-          )}
+          ))}
         </div>
       )}
     </div>
