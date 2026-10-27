@@ -22,7 +22,19 @@ function lateNotice(name, late) {
   return `${name} tiene ${late} ${label}. Se asigna igual.`
 }
 
-export default function MechanicSearch({ value, onChange, placeholder = 'Mecánico', role }) {
+function uniqueByName(rows) {
+  const seen = new Set()
+  const unique = []
+  for (const row of rows) {
+    const key = plainName(row.name).toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    unique.push(row)
+  }
+  return unique
+}
+
+export default function MechanicSearch({ value, onChange, placeholder = 'Mecánico', role, uniqueNames = false, flow = false }) {
   const [query, setQuery] = useState(value || '')
   const [results, setResults] = useState([])
   const [open, setOpen] = useState(false)
@@ -40,16 +52,19 @@ export default function MechanicSearch({ value, onChange, placeholder = 'Mecáni
     const q = query.trim()
     const t = setTimeout(() => {
       setLoading(true)
-      const params = { active_only: true, limit: q ? 10 : 30, prefix: true }
+      const params = { active_only: true, limit: uniqueNames ? 80 : (q ? 10 : 30), prefix: true }
       if (q) params.search = q
       if (role) params.role = role
       api.getMechanics(params)
-        .then((res) => setResults((res || []).filter((m) => m.role !== 'admin')))
+        .then((res) => {
+          const rows = (res || []).filter((m) => m.role !== 'admin')
+          setResults(uniqueNames ? uniqueByName(rows) : rows)
+        })
         .catch(() => setResults([]))
         .finally(() => setLoading(false))
     }, q ? 200 : 0)
     return () => clearTimeout(t)
-  }, [query, role, open])
+  }, [query, role, open, uniqueNames])
 
   useEffect(() => {
     const handler = (e) => {
@@ -100,7 +115,9 @@ export default function MechanicSearch({ value, onChange, placeholder = 'Mecáni
       />
       {notice && <p className="text-xs text-amber-700 mt-1">{notice}</p>}
       {open && (
-        <ul className="absolute z-30 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+        <ul className={flow
+          ? 'mt-1 bg-white border border-slate-200 rounded-lg shadow-sm max-h-48 overflow-y-auto'
+          : 'absolute z-30 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto'}>
           {loading && <li className="p-2 text-xs text-slate-400">Buscando...</li>}
           {!loading && results.length === 0 && (
             <li className="p-2 text-xs text-slate-400">{query.trim() ? 'Sin coincidencias — se guarda el texto' : 'Equipo activo'}</li>
@@ -111,17 +128,19 @@ export default function MechanicSearch({ value, onChange, placeholder = 'Mecáni
                 type="button"
                 className="w-full text-left px-3 py-2 hover:bg-brand-50 text-sm"
                 onClick={() => {
-                  const label = !role && m.role
-                    ? `${m.name} — ${m.role === 'designer' ? 'Diseñador' : 'Mecánico'}`
-                    : m.name
+                  const label = uniqueNames || role
+                    ? plainName(m.name)
+                    : (!role && m.role
+                      ? `${m.name} — ${m.role === 'designer' ? 'Diseñador' : 'Mecánico'}`
+                      : m.name)
                   edited.current = true
                   setQuery(label)
                   onChange(label)
                   setOpen(false)
                 }}
               >
-                {m.name}
-                {!role && m.role && (
+                {plainName(m.name)}
+                {!uniqueNames && !role && m.role && (
                   <span className="ml-2 text-[10px] uppercase text-slate-400">
                     {m.role === 'designer' ? 'Diseñador' : 'Mecánico'}
                   </span>

@@ -8,6 +8,7 @@ from app.database import fetch_all, fetch_in, get_supabase, in_parallel
 from app.schemas.work_order import (
     BillingType,
     AdminHelpUpdate,
+    CalculatorSettings,
     CommissionPreview,
     OrderItemCreate,
     QrPaymentCreate,
@@ -19,7 +20,7 @@ from app.schemas.work_order import (
 )
 from app.services.billing import compute_billing, order_payable_total
 from app.services.commission_sheet import commission_catalog, commission_figures, stamp_commission
-from app.services.tariff import fixed_rates
+from app.services.tariff import calculator_view, merge_rates, read_rates, write_rates
 from app.services.orders import _next_ot_number, on_order_entregado, register_advance, register_qr_payment
 from app.services.photos import delete_photo, list_photos, photo_counts_by_order, upload_photo
 from app.utils.dates import now_bolivia, today_bolivia
@@ -279,7 +280,7 @@ def _stamp_process(process, context: dict):
 
 
 def _insert_pieces(db, order_id: str, pieces: list[OrderItemCreate]) -> None:
-    context = {"people": _staff(db), "rates": fixed_rates()}
+    context = {"people": _staff(db), "rates": read_rates(db)}
     db.table("order_items").delete().eq("work_order_id", order_id).execute()
     for i, piece in enumerate(pieces):
         data = piece.model_dump(mode="json")
@@ -366,12 +367,36 @@ def list_commission_pieces():
     return commission_catalog()
 
 
+def _preview_rates(db, body: CommissionPreview) -> dict:
+    rates = read_rates(db)
+    if body.settings is None:
+        return rates
+    return merge_rates({**rates, **body.settings.model_dump(exclude_none=True)})
+
+
+@router.get("/calculator-settings")
+def get_calculator_settings():
+    return calculator_view(read_rates(get_supabase()))
+
+
+@router.put("/calculator-settings")
+def save_calculator_settings(body: CalculatorSettings):
+    db = get_supabase()
+    current = read_rates(db)
+    current.update(body.model_dump())
+    try:
+        saved = write_rates(db, current)
+    except Exception:
+        raise HTTPException(status_code=400, detail="No se pudo guardar. Falta la tabla de la calculadora.")
+    return calculator_view(saved)
+
+
 @router.post("/commission-preview")
 def preview_commission(body: CommissionPreview):
     db = get_supabase()
     figures = commission_figures(body.commission, {
         "people": _staff(db),
-        "rates": fixed_rates(),
+        "rates": _preview_rates(db, body),
         "steps": body.steps,
     })
     return figures
@@ -433,7 +458,7 @@ def assign_piece_step(order_id: UUID, item_id: UUID, body: StepAssign):
         process = {}
     process = dict(process)
     process["steps"] = _steps_with(process, body)
-    process = _stamp_process(process, {"people": _staff(db), "rates": fixed_rates()})
+    process = _stamp_process(process, {"people": _staff(db), "rates": read_rates(db)})
     saved = (
         db.table("order_items")
         .update({"process": process})
@@ -466,7 +491,7 @@ def mark_admin_help(order_id: UUID, item_id: UUID, body: AdminHelpUpdate):
     commission = dict(commission)
     commission["admin_help"] = body.enabled
     process["commission"] = commission
-    process = _stamp_process(process, {"people": _staff(db), "rates": fixed_rates()})
+    process = _stamp_process(process, {"people": _staff(db), "rates": read_rates(db)})
     saved = (
         db.table("order_items")
         .update({"process": process})

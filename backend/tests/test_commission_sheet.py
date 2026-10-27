@@ -74,9 +74,9 @@ class CommissionSheetTests(TestCase):
     def test_labor_matches_the_sheet_minutes(self):
         weld = task_pay("acc_internos", {"task": "weld", "quantity": 30})
         finish = task_pay("acc_internos", {"task": "finish", "quantity": 30})
-        self.assertEqual(weld, 52.58)
-        self.assertEqual(finish, 122.69)
-        self.assertEqual(round(weld + finish, 2), 175.27)
+        self.assertEqual(weld, 76.62)
+        self.assertEqual(finish, 178.78)
+        self.assertEqual(round(weld + finish, 2), 255.4)
 
     def test_mount_money_pays_the_standard_once(self):
         figures = commission_figures({
@@ -84,14 +84,14 @@ class CommissionSheetTests(TestCase):
             "mount_count": 100,
             "mount_technician": "Bruno",
         }, {"people": [{"name": "Bruno", "labor_efficiency": 0.6, "salary_base": 850, "salary_period": "weekly"}]})
-        self.assertEqual(figures["pay"]["mount"], 11.68)
+        self.assertEqual(figures["pay"]["mount"], 17.03)
         self.assertEqual(figures["quote"]["mount"], 100)
-        self.assertEqual(figures["pay"]["total"], 11.68)
+        self.assertEqual(figures["pay"]["total"], 17)
 
     def test_lower_efficiency_increases_the_pay(self):
         slow = task_pay("acc_internos", {"task": "weld", "quantity": 30, "efficiency": 0.4})
         normal = task_pay("acc_internos", {"task": "weld", "quantity": 30, "efficiency": 0.6})
-        self.assertEqual(normal, 52.58)
+        self.assertEqual(normal, 84.13)
         self.assertGreater(slow, normal)
 
     def test_higher_week_raises_the_customer_price(self):
@@ -111,7 +111,7 @@ class CommissionSheetTests(TestCase):
         self.assertGreater(high["pay"]["weld"], low["pay"]["weld"])
         self.assertGreater(high["quote"]["weld"], low["quote"]["weld"])
         self.assertGreater(high["quote"]["finish"], low["quote"]["finish"])
-        self.assertGreater(low["quote"]["weld"], low["quote"]["finish"])
+        self.assertGreater(low["quote"]["finish"], low["quote"]["weld"])
 
     def test_paint_stays_out_of_the_technician_pay(self):
         figures = commission_figures({
@@ -119,7 +119,7 @@ class CommissionSheetTests(TestCase):
             "paint_amount": 80,
             "weld_cm": 30,
         }, {"steps": [{"id": "soldadura", "technician": "Ana"}], "people": [{"name": "Ana", "labor_efficiency": 0.6, "salary_base": 850, "salary_period": "weekly"}]})
-        self.assertEqual(figures["pay"]["weld"], 52.58)
+        self.assertEqual(figures["pay"]["weld"], 76.62)
         self.assertEqual(figures["quote"]["paint"], 80)
         self.assertGreater(figures["quote"]["total"], figures["pay"]["total"])
 
@@ -155,8 +155,31 @@ class CommissionSheetTests(TestCase):
         cleared = normalize_commission({"piece_id": "acc_internos", "admin_help": False})
         self.assertFalse(cleared["admin_help"])
 
+    def test_free_multiplier_changes_only_the_quote(self):
+        piece = {"piece_id": "acc_internos", "mount_count": 100, "mount_technician": "Bruno"}
+        people = [{"name": "Bruno", "salary_base": 850, "salary_period": "weekly"}]
+        plain = commission_figures(piece, {"people": people})
+        doubled = commission_figures({**piece, "quote_multiplier": 2}, {"people": people})
+        self.assertEqual(doubled["quote"]["total"], 200)
+        self.assertEqual(doubled["pay"]["total"], plain["pay"]["total"])
+        self.assertEqual(doubled["time"]["minutes"], plain["time"]["minutes"])
+
+    def test_sheet_time_and_weld_without_margin(self):
+        figures = commission_figures({
+            "piece_id": "acc_internos",
+            "weld_cm": 30,
+            "finish_cm": 30,
+        }, {"steps": [
+            {"id": "soldadura", "technician": "Ana"},
+            {"id": "afinado", "technician": "Ana"},
+        ], "people": [{"name": "Ana", "salary_base": 850, "salary_period": "weekly"}]})
+        self.assertEqual(figures["quote"]["weld"], 167)
+        self.assertEqual(figures["quote"]["finish"], 358)
+        self.assertEqual(figures["time"]["minutes"], 428.6)
+        self.assertEqual(figures["pay"]["total"], 255)
+
     def test_empty_or_unpaid_task_is_zero(self):
-        self.assertEqual(task_pay("acc_internos", {"task": "mount", "quantity": 1}), 11.68)
+        self.assertEqual(task_pay("acc_internos", {"task": "mount", "quantity": 1}), 17.03)
         self.assertEqual(task_pay("acc_internos", {"task": "mount", "quantity": 0}), 0)
         self.assertEqual(task_pay("no-existe", {"task": "weld", "quantity": 10}), 0)
         self.assertEqual(task_pay("espejos", {"task": "weld", "quantity": 10}), 0)

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.database import fetch_all, get_supabase
 from app.schemas.mechanic import MechanicCreate, MechanicResponse, MechanicUpdate
 from app.services.mechanic_load import build_workload, open_orders, unassigned_orders
-from app.services.tariff import fixed_rates, list_changes, remember_change
+from app.services.tariff import list_changes, read_rates, remember_change
 from app.utils.dates import today_bolivia
 
 router = APIRouter(prefix="/mechanics", tags=["Mecánicos"])
@@ -81,7 +81,7 @@ def mechanic_workload():
         )
     except Exception:
         items = fetch_all(lambda: db.table("order_items").select("work_order_id, mechanic, process"))
-    source = {"people": people, "orders": orders, "items": items, "rates": fixed_rates()}
+    source = {"people": people, "orders": orders, "items": items, "rates": read_rates(db)}
     today = today_bolivia()
     return {
         "people": build_workload(source, today),

@@ -31,9 +31,24 @@ class AdminHelpUpdate(BaseModel):
     enabled: bool
 
 
+class CalculatorSettings(BaseModel):
+    efficiency: float = Field(ge=0.01, le=1)
+    margin: float = Field(ge=0, le=0.95)
+    plastix_price: float = Field(ge=0, le=1_000_000)
+    plastix_cm: float = Field(gt=0, le=1_000_000)
+
+
+class CalculatorSettingsPatch(BaseModel):
+    efficiency: float | None = Field(default=None, ge=0.01, le=1)
+    margin: float | None = Field(default=None, ge=0, le=0.95)
+    plastix_price: float | None = Field(default=None, ge=0, le=1_000_000)
+    plastix_cm: float | None = Field(default=None, gt=0, le=1_000_000)
+
+
 class CommissionPreview(BaseModel):
     commission: dict = Field(default_factory=dict)
     steps: list = Field(default_factory=list)
+    settings: CalculatorSettingsPatch | None = None
 
 
 class OrderItemCreate(BaseModel):

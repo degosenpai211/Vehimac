@@ -1,6 +1,12 @@
 from dataclasses import dataclass
 
-from app.services.tariff import DEFAULT_EFFICIENCY, clamp_efficiency, hour_for, hourly_rate, pay_profile
+from app.services.tariff import (
+    DEFAULT_RATES,
+    hour_for,
+    hourly_rate,
+    pay_profile,
+    sheet_efficiency,
+)
 
 OTHER_PIECE_ID = "otra"
 NOTE_LIMIT = 120
@@ -9,7 +15,7 @@ MAX_QUANTITY = 9999
 WEEKLY_PAY = 850
 WEEKLY_HOURS = 44
 AGUINALDO_PER_HOUR = 1.71477343265053
-LABOR_EFFICIENCY = DEFAULT_EFFICIENCY
+SHEET_EFFICIENCY = DEFAULT_RATES["efficiency"]
 PAY_TASKS = ("mount", "arm", "weld", "finish")
 ADMIN_HELP_MULTIPLIER = 1.25
 
@@ -121,10 +127,10 @@ def piece_minutes(piece_id: str, task: str, rates: dict | None = None) -> int:
     }[task]
 
 
-def labor_pay(work: dict) -> float:
+def labor_amount(work: dict) -> float:
     minutes = float(work.get("minutes") or 0)
     quantity = float(work.get("quantity") or 0)
-    efficiency = clamp_efficiency(work.get("efficiency", LABOR_EFFICIENCY))
+    efficiency = sheet_efficiency(work.get("efficiency", SHEET_EFFICIENCY))
     hourly = work.get("hourly")
     if hourly is None:
         hourly = hourly_rate({
@@ -132,10 +138,14 @@ def labor_pay(work: dict) -> float:
             "weekly_hours": WEEKLY_HOURS,
             "holiday_days": 17.5,
         })
-    if minutes <= 0 or quantity <= 0:
+    if minutes <= 0 or quantity <= 0 or efficiency <= 0:
         return 0.0
-    amount = quantity * (minutes / efficiency) * float(hourly) / 60
-    return round(amount, 2)
+    # La hoja multiplica la hora por (1 + eficiencia) y divide el tiempo entre la eficiencia.
+    return quantity * (minutes / efficiency) * float(hourly) * (1 + efficiency) / 60
+
+
+def labor_pay(work: dict) -> float:
+    return round(labor_amount(work), 2)
 
 
 def task_pay(piece_id: str, job: dict) -> float:
@@ -143,7 +153,7 @@ def task_pay(piece_id: str, job: dict) -> float:
     return labor_pay({
         "minutes": piece_minutes(piece_id, task, job.get("rates")),
         "quantity": job.get("quantity"),
-        "efficiency": job.get("efficiency", LABOR_EFFICIENCY),
+        "efficiency": job["efficiency"] if "efficiency" in job else SHEET_EFFICIENCY,
         "hourly": job.get("hourly"),
     })
 
@@ -152,15 +162,31 @@ def _admin_help(value) -> bool:
     return value is True
 
 
-def _with_admin_price(figures: dict, enabled: bool) -> dict:
+def _chosen_factor(raw, admin_help: bool) -> float:
+    if isinstance(raw, dict) and raw.get("quote_multiplier") not in (None, ""):
+        try:
+            number = float(raw.get("quote_multiplier"))
+        except (TypeError, ValueError):
+            number = 1.0
+        if number < 0.01:
+            return 0.01
+        if number > 100:
+            return 100.0
+        return round(number, 4)
+    if admin_help:
+        return ADMIN_HELP_MULTIPLIER
+    return 1.0
+
+
+def _with_price_factor(figures: dict, factor: float) -> dict:
     base = float(figures["quote"]["total"])
     figures["quote"]["piece_total"] = base
-    figures["quote"]["admin_help"] = enabled
-    figures["quote"]["admin_multiplier"] = ADMIN_HELP_MULTIPLIER if enabled else 1.0
-    if not enabled:
+    figures["quote"]["admin_multiplier"] = factor
+    figures["quote"]["admin_help"] = factor != 1
+    if factor == 1:
         figures["quote"]["increase"] = 0.0
         return figures
-    raised = float(round(base * ADMIN_HELP_MULTIPLIER))
+    raised = float(round(base * factor))
     figures["quote"]["total"] = raised
     figures["quote"]["increase"] = float(round(raised - base))
     return figures
@@ -217,6 +243,7 @@ def _blank_figures() -> dict:
             "paint": 0.0, "design": 0.0, "multiplier": 1.0, "total": 0.0,
         },
         "efficiencies": {},
+        "time": {"minutes": 0.0, "hours": 0.0},
     }
 
 
@@ -237,9 +264,9 @@ def commission_figures(raw, context: dict) -> dict:
         figures["pay"]["other"] = cleaned["custom_amount"]
         figures["pay"]["total"] = cleaned["custom_amount"]
         figures["quote"]["total"] = cleaned["custom_amount"]
-        return _with_admin_price(figures, cleaned["admin_help"])
+        return _with_price_factor(figures, _chosen_factor(raw, cleaned["admin_help"]))
     if not cleaned["piece_id"]:
-        return _with_admin_price(figures, cleaned["admin_help"])
+        return _with_price_factor(figures, _chosen_factor(raw, cleaned["admin_help"]))
     names = {
         "mount": cleaned["mount_technician"],
         "arm": cleaned["arm_technician"],
@@ -260,36 +287,50 @@ def commission_figures(raw, context: dict) -> dict:
     }
     plastix = float(rates["plastix_price"]) / float(rates["plastix_cm"])
     divisor = 1 - float(rates["margin"])
+    # Una sola eficiencia de la hoja, no la de cada persona.
+    efficiency = sheet_efficiency(rates.get("efficiency"))
+    raw_pay = 0.0
     for task, quantity in quantities.items():
         minutes = piece_minutes(cleaned["piece_id"], task, rates)
         profile = pay_profile(names[task], people) if names[task] else None
-        efficiency = profile["efficiency"] if profile else LABOR_EFFICIENCY
         task_hour = hour_for(profile, rates) if profile else hourly
         figures["efficiencies"][task] = efficiency
         if minutes <= 0 or quantity <= 0:
             continue
         figures["allowed"][task] = round(quantity * minutes / efficiency, 2)
-        unit = labor_pay({
+        unit = labor_amount({
             "minutes": minutes, "quantity": 1, "efficiency": efficiency, "hourly": task_hour,
         })
         if names[task]:
-            figures["pay"][task] = labor_pay({
+            earned = labor_amount({
                 "minutes": minutes, "quantity": quantity, "efficiency": efficiency, "hourly": task_hour,
             })
+            figures["pay"][task] = round(earned, 2)
+            raw_pay += earned
         if task in ("mount", "arm"):
             figures["quote"][task] = float(round(amounts[task]))
             continue
-        material = plastix if task == "weld" else 0.0
-        if amounts[task] > 0 and divisor > 0:
-            figures["quote"][task] = float(round((unit + material) / divisor * amounts[task]))
+        if amounts[task] <= 0:
+            continue
+        if task == "weld":
+            figures["quote"][task] = float(round((unit + plastix) * amounts[task]))
+            continue
+        if divisor <= 0:
+            continue
+        figures["quote"][task] = float(round(unit / divisor * amounts[task]))
     figures["quote"]["paint"] = float(round(cleaned["paint_amount"]))
     design = _design_charge(cleaned["design_size"], rates)
     figures["quote"]["design"] = design["amount"]
     figures["quote"]["multiplier"] = design["multiplier"]
     base = sum(figures["quote"][key] for key in ("mount", "arm", "weld", "finish", "paint"))
     figures["quote"]["total"] = float(round(base * design["multiplier"] + design["amount"]))
-    figures["pay"]["total"] = round(sum(figures["pay"][key] for key in ("mount", "arm", "weld", "finish", "other")), 2)
-    return _with_admin_price(figures, cleaned["admin_help"])
+    figures["pay"]["total"] = float(round(raw_pay + figures["pay"]["other"]))
+    charged = sum(figures["allowed"].values())
+    figures["time"] = {
+        "minutes": round(charged, 1),
+        "hours": round(charged / 60, 2) if charged else 0.0,
+    }
+    return _with_price_factor(figures, _chosen_factor(raw, cleaned["admin_help"]))
 
 
 def stamp_commission(raw, context: dict) -> dict:

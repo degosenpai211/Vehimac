@@ -8,6 +8,10 @@ class TariffTests(TestCase):
         rates = merge_rates({})
         self.assertAlmostEqual(hourly_rate(rates), 21.032955, places=4)
 
+    def test_sheet_efficiency_starts_at_seventy(self):
+        self.assertEqual(merge_rates({})["efficiency"], 0.7)
+        self.assertEqual(merge_rates({"efficiency": 0.65})["efficiency"], 0.65)
+
     def test_efficiency_stays_between_one_and_one_hundred(self):
         self.assertEqual(clamp_efficiency(0), 0.01)
         self.assertEqual(clamp_efficiency(2), 1)

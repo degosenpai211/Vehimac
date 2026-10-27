@@ -140,7 +140,7 @@ function QuantityRow({ record }) {
   )
 }
 
-function quoteSignature(commission, steps) {
+function quoteSignature(commission, steps, settings) {
   return JSON.stringify({
     piece_id: commission.piece_id,
     mount_count: commission.mount_count,
@@ -153,18 +153,28 @@ function quoteSignature(commission, steps) {
     arm_technician: commission.arm_technician,
     custom_amount: commission.custom_amount,
     admin_help: commission.admin_help === true,
+    quote_multiplier: commission.quote_multiplier,
     steps: (steps || []).map((step) => ({ id: step.id, technician: step.technician })),
+    settings,
   })
 }
 
-function MoneyPreview({ commission, steps, active, prominent = false }) {
+function timeLabel(figures) {
+  const minutes = Number(figures?.time?.minutes) || 0
+  if (minutes <= 0) return ''
+  const hours = Number(figures.time?.hours) || minutes / 60
+  const hourText = hours.toLocaleString('es-BO', { maximumFractionDigits: 1 })
+  return `${Math.round(minutes)} min · ${hourText} h`
+}
+
+function MoneyPreview({ commission, steps, settings, active, prominent = false }) {
   const [figures, setFigures] = useState(null)
-  const signature = quoteSignature(commission, steps)
+  const signature = quoteSignature(commission, steps, settings)
   useEffect(() => {
     if (!active) return undefined
     let cancelled = false
     const timer = setTimeout(() => {
-      api.previewCommission({ commission, steps })
+      api.previewCommission({ commission, steps, settings })
         .then((body) => { if (!cancelled) setFigures(body) })
         .catch(() => { if (!cancelled) setFigures(null) })
     }, 400)
@@ -190,8 +200,11 @@ function MoneyPreview({ commission, steps, active, prominent = false }) {
       </div>
       <div>
         <p className="text-xs text-slate-300">Mano de Obra</p>
-        <p className="text-2xl font-bold tabular-nums">{formatCurrency(figures.pay.total)}</p>
+        <p className="text-2xl font-bold tabular-nums">{formatWholeBolivianos(figures.pay.total)}</p>
       </div>
+      {timeLabel(figures) && (
+        <p className="col-span-2 text-sm text-slate-200">Tiempo total {timeLabel(figures)}</p>
+      )}
       {figures.quote?.admin_help && (
         <p className="col-span-2 text-xs text-amber-200">
           Precio de la pieza {formatWholeBolivianos(figures.quote.piece_total)} → {formatWholeBolivianos(figures.quote.total)}
@@ -201,7 +214,38 @@ function MoneyPreview({ commission, steps, active, prominent = false }) {
   )
 }
 
-export default function CommissionRecord({ process, readOnly = false, onChange, standalone = false }) {
+function FactorBox({ commission, onApply }) {
+  const [text, setText] = useState(String(commission.quote_multiplier || 1))
+  const apply = () => {
+    const amount = readQuantity(text)
+    onApply(amount > 0 ? amount : 1)
+  }
+  return (
+    <div className="flex items-end gap-2">
+      <div className="flex-1">
+        <label className="label">Multiplicador</label>
+        <input
+          type="text"
+          inputMode="decimal"
+          className="input text-sm"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return
+            event.preventDefault()
+            apply()
+          }}
+        />
+        <p className="mt-1 text-xs text-slate-500">1 no cambia. 1,25 sube 25%.</p>
+      </div>
+      <button type="button" className="btn-primary btn-sm" onClick={apply}>
+        Multiplicar
+      </button>
+    </div>
+  )
+}
+
+export default function CommissionRecord({ process, readOnly = false, onChange, standalone = false, settings = null }) {
   const { catalog, failed } = useCatalog()
   const commission = process.commission || emptyCommission()
   const patch = (partial) => onChange({ ...commission, ...partial })
@@ -257,8 +301,11 @@ export default function CommissionRecord({ process, readOnly = false, onChange, 
       )}
       {(isCatalog || isOther) && (
         <div className="space-y-2">
-          <MoneyPreview commission={commission} steps={process.steps} active prominent={standalone} />
-          {!readOnly && (
+          <MoneyPreview commission={commission} steps={process.steps} settings={settings} active prominent={standalone} />
+          {!readOnly && standalone && (
+            <FactorBox commission={commission} onApply={(amount) => patch({ quote_multiplier: amount })} />
+          )}
+          {!readOnly && !standalone && (
             <button
               type="button"
               className={commission.admin_help ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'}

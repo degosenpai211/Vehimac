@@ -282,12 +282,12 @@ class MechanicLoadTests(TestCase):
         rows = {row["name"]: row for row in build_workload(_source(people, orders, items), TODAY)}
         ana = rows["Ana"]["orders"][0]["pay"]
         bruno = rows["Bruno"]["orders"][0]["pay"]
-        self.assertEqual(ana["weld"], 52.58)
-        self.assertEqual(ana["finish"], 122.69)
+        self.assertEqual(ana["weld"], 84.13)
+        self.assertEqual(ana["finish"], 196.31)
         self.assertEqual(ana["mount"], 0)
-        self.assertEqual(ana["total"], 175.27)
-        self.assertEqual(bruno["mount"], 11.68)
-        self.assertEqual(bruno["total"], 11.68)
+        self.assertEqual(ana["total"], 280.44)
+        self.assertEqual(bruno["mount"], 18.7)
+        self.assertEqual(bruno["total"], 18.7)
         self.assertEqual(bruno["weld"], 0)
 
     def test_other_piece_uses_the_written_amount(self):

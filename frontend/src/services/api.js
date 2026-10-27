@@ -102,6 +102,8 @@ export const api = {
   },
   getCommissionPieces: () => request('/work-orders/commission-pieces'),
   previewCommission: (data) => request('/work-orders/commission-preview', { method: 'POST', body: JSON.stringify(data) }),
+  getCalculatorSettings: () => request('/work-orders/calculator-settings'),
+  saveCalculatorSettings: (data) => request('/work-orders/calculator-settings', { method: 'PUT', body: JSON.stringify(data) }),
   markAdminHelp: (orderId, itemId, enabled) => request(`/work-orders/${orderId}/pieces/${itemId}/admin-help`, {
     method: 'PATCH',
     body: JSON.stringify({ enabled }),

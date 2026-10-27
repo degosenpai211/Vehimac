@@ -10,6 +10,7 @@ YEAR_WEEKS = 52
 HOLIDAY_HOURS = 8
 
 DEFAULT_RATES = {
+    "efficiency": 0.7,
     "weekly_pay": 850.0,
     "weekly_hours": float(WEEKLY_HOURS),
     "holiday_days": 17.5,
@@ -55,6 +56,12 @@ def _money(value, fallback: float) -> float:
     if number < 0:
         return fallback
     return round(number, 2)
+
+
+def sheet_efficiency(value) -> float:
+    if value is None or value == "":
+        return DEFAULT_RATES["efficiency"]
+    return clamp_efficiency(value)
 
 
 def _margin(value) -> float:
@@ -191,6 +198,7 @@ def _piece_overrides(raw) -> dict:
 def merge_rates(incoming) -> dict:
     raw = incoming if isinstance(incoming, dict) else {}
     merged = {
+        "efficiency": sheet_efficiency(raw.get("efficiency")),
         "weekly_pay": _money(raw.get("weekly_pay"), DEFAULT_RATES["weekly_pay"]),
         "weekly_hours": _positive(raw.get("weekly_hours"), DEFAULT_RATES["weekly_hours"]),
         "holiday_days": _money(raw.get("holiday_days"), DEFAULT_RATES["holiday_days"]),
@@ -208,6 +216,18 @@ def merge_rates(incoming) -> dict:
     if merged["weekly_pay"] <= 0:
         merged["weekly_pay"] = DEFAULT_RATES["weekly_pay"]
     return merged
+
+
+def calculator_view(rates: dict) -> dict:
+    price = float(rates.get("plastix_price") or 0)
+    width = float(rates.get("plastix_cm") or 0)
+    return {
+        "efficiency": rates.get("efficiency"),
+        "margin": rates.get("margin"),
+        "plastix_price": price,
+        "plastix_cm": width,
+        "plastix_per_cm": round(price / width, 4) if width else 0.0,
+    }
 
 
 def present_rates(rates: dict) -> dict:
