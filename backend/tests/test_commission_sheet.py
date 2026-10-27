@@ -17,6 +17,11 @@ class CommissionSheetTests(TestCase):
         self.assertIn("torpedo", ids)
         self.assertIn("acc_internos", ids)
         self.assertEqual(len(ids), len(set(ids)))
+        for row in commission_catalog():
+            self.assertEqual(row["mount_minutes"], 20)
+            self.assertEqual(row["arm_minutes"], 20)
+            self.assertEqual(row["weld_minutes"], 3)
+            self.assertEqual(row["finish_minutes"], 7)
 
     def test_known_piece_keeps_quantities_and_names(self):
         cleaned = normalize_commission({
@@ -182,7 +187,10 @@ class CommissionSheetTests(TestCase):
         self.assertEqual(task_pay("acc_internos", {"task": "mount", "quantity": 1}), 17.03)
         self.assertEqual(task_pay("acc_internos", {"task": "mount", "quantity": 0}), 0)
         self.assertEqual(task_pay("no-existe", {"task": "weld", "quantity": 10}), 0)
-        self.assertEqual(task_pay("espejos", {"task": "weld", "quantity": 10}), 0)
+        self.assertEqual(
+            task_pay("espejos", {"task": "weld", "quantity": 10}),
+            task_pay("acc_internos", {"task": "weld", "quantity": 10}),
+        )
 
 
 if __name__ == "__main__":

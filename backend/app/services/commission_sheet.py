@@ -33,26 +33,34 @@ class CommissionPiece:
     finish_minutes: int
 
 
-# Minutos de la hoja 2. La cantidad de cada OT se anota aparte.
-PIECES: tuple[CommissionPiece, ...] = (
-    CommissionPiece("acc_internos", "Accesorios internos", 20, 20, 3, 7),
-    CommissionPiece("tapices_puertas", "Tapices puertas", 20, 20, 3, 7),
-    CommissionPiece("jaladores_asiento", "Jaladores de asiento", 20, 0, 6, 7),
-    CommissionPiece("laterales_asientos", "Laterales de asientos", 40, 0, 3, 7),
-    CommissionPiece("consolas", "Consolas", 90, 30, 3, 7),
-    CommissionPiece("airbag_volante", "Airbag volante", 30, 30, 3, 7),
-    CommissionPiece("airbag_pasajero", "Airbag pasajero", 60, 20, 3, 7),
-    CommissionPiece("torpedo", "Torpedo", 180, 0, 3, 7),
-    CommissionPiece("espejos", "Espejos", 20, 60, 0, 10),
-    CommissionPiece("jaladores_ext", "Jaladores ext.", 40, 20, 60, 20),
-    CommissionPiece("jaladores_int", "Jaladores int.", 20, 20, 45, 20),
-    CommissionPiece("chapas", "Chapas", 60, 60, 120, 0),
-    CommissionPiece("parachoques", "Parachoques", 60, 40, 3, 7),
-    CommissionPiece("faroles", "Faroles", 80, 120, 90, 120),
-    CommissionPiece("tanques", "Tanques", 240, 20, 20, 5),
-    CommissionPiece("agarraderas", "Par agarraderas", 20, 0, 10, 170),
-    CommissionPiece("pico_tanque", "Pico de tanque", 240, 20, 45, 10),
-    CommissionPiece("acc_motor", "Accesorios de motor", 20, 20, 5, 7),
+# La hoja actual usa los mismos minutos en todas las piezas.
+STANDARD_MOUNT_MINUTES = 20
+STANDARD_ARM_MINUTES = 20
+STANDARD_WELD_MINUTES = 3
+STANDARD_FINISH_MINUTES = 7
+
+PIECES: tuple[CommissionPiece, ...] = tuple(
+    CommissionPiece(piece_id, name, STANDARD_MOUNT_MINUTES, STANDARD_ARM_MINUTES, STANDARD_WELD_MINUTES, STANDARD_FINISH_MINUTES)
+    for piece_id, name in (
+        ("acc_internos", "Accesorios internos"),
+        ("tapices_puertas", "Tapices puertas"),
+        ("jaladores_asiento", "Jaladores de asiento"),
+        ("laterales_asientos", "Laterales de asientos"),
+        ("consolas", "Consolas"),
+        ("airbag_volante", "Airbag volante"),
+        ("airbag_pasajero", "Airbag pasajero"),
+        ("torpedo", "Torpedo"),
+        ("espejos", "Espejos"),
+        ("jaladores_ext", "Jaladores ext."),
+        ("jaladores_int", "Jaladores int."),
+        ("chapas", "Chapas"),
+        ("parachoques", "Parachoques"),
+        ("faroles", "Faroles"),
+        ("tanques", "Tanques"),
+        ("agarraderas", "Par agarraderas"),
+        ("pico_tanque", "Pico de tanque"),
+        ("acc_motor", "Accesorios de motor"),
+    )
 )
 
 _BY_ID = {piece.piece_id: piece for piece in PIECES}
