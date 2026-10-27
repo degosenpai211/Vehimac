@@ -55,11 +55,13 @@ function AssignForm({ person, board, onChanged }) {
   const [day, setDay] = useState('')
   const [clock, setClock] = useState('')
   const [query, setQuery] = useState('')
+  const [suggesting, setSuggesting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [marking, setMarking] = useState(false)
   const matches = useMemo(() => {
-    if (!query.trim()) return []
-    return (board || []).filter((row) => orderLacksMechanic(row) && orderMatches(row, query))
+    const pending = (board || []).filter(orderLacksMechanic)
+    if (!query.trim()) return pending
+    return pending.filter((row) => orderMatches(row, query))
   }, [board, query])
   const raised = useMemo(() => raisedPieces(board), [board])
   const order = (board || []).find((row) => row.id === orderId)
@@ -115,14 +117,18 @@ function AssignForm({ person, board, onChanged }) {
           className="input text-sm"
           placeholder="OT80 o nombre del cliente"
           value={query}
+          onFocus={() => setSuggesting(true)}
+          onBlur={() => setSuggesting(false)}
           onChange={(event) => {
             setQuery(event.target.value)
             setOrderId('')
             setItemId('')
+            setSuggesting(true)
           }}
         />
-        {!orderId && query.trim() && (
+        {suggesting && !orderId && (
           <ul className="max-h-60 overflow-y-auto rounded-lg border border-slate-200">
+            <li className="px-3 py-1.5 text-xs font-semibold text-slate-500">Sin mecánico</li>
             {matches.length === 0 && (
               <li className="px-3 py-2 text-sm text-slate-500">Sin órdenes en proceso sin mecánico.</li>
             )}
@@ -131,10 +137,12 @@ function AssignForm({ person, board, onChanged }) {
                 <button
                   type="button"
                   className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
                     setOrderId(row.id)
                     setItemId('')
                     setQuery(`${formatOT(row)} · ${row.client_name || 'Sin cliente'}`)
+                    setSuggesting(false)
                   }}
                 >
                   {formatOT(row)} · {row.client_name || 'Sin cliente'}

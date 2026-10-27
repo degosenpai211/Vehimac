@@ -103,7 +103,7 @@ function PayChart({ orders }) {
     <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold text-slate-900">Lo que hizo</h3>
+          <h3 className="text-base font-semibold text-slate-900">Trabajado</h3>
           <p className="text-xs text-slate-500">Mano de obra de la hoja. Todavía no reemplaza el sueldo.</p>
         </div>
         <p className="text-xl font-bold text-brand-800 tabular-nums">{formatCurrency(total)}</p>
@@ -120,7 +120,7 @@ function PayChart({ orders }) {
         ))}
       </ul>
       {total <= 0 && (
-        <p className="mt-3 text-xs text-slate-500">Los bolivianos aparecen cuando la comisión está anotada en la pieza.</p>
+        <p className="mt-3 text-xs text-slate-500">Los bolivianos aparecen cuando esa cuenta ya quedó guardada en la pieza. Cambiar la efectividad no borra lo guardado, ni completa lo que no se anotó.</p>
       )}
     </section>
   )

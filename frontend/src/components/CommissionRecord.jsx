@@ -63,14 +63,6 @@ function choosePiece(pieceId) {
   return next
 }
 
-export function CommissionSummary({ process }) {
-  const { catalog } = useCatalog()
-  const commission = process.commission || emptyCommission()
-  const name = pieceName(catalog, commission.piece_id)
-  if (!name) return null
-  return <p className="px-3 pb-2 text-xs text-slate-600">Comisión: {name}</p>
-}
-
 function QuantityRow({ record }) {
   const { task, process, commission, readOnly, onPatch } = record
   const value = commission[task.field] || 0
@@ -126,7 +118,7 @@ function quoteSignature(commission, steps) {
   })
 }
 
-function MoneyPreview({ commission, steps, active }) {
+function MoneyPreview({ commission, steps, active, prominent = false }) {
   const [figures, setFigures] = useState(null)
   const signature = quoteSignature(commission, steps)
   useEffect(() => {
@@ -143,15 +135,34 @@ function MoneyPreview({ commission, steps, active }) {
     }
   }, [active, signature])
   if (!figures?.pay) return null
+  if (!prominent) {
+    return (
+      <p className="text-sm text-slate-700">
+        Su parte {formatCurrency(figures.pay.total)} · Cobro al cliente {formatCurrency(figures.quote?.total || 0)}
+        {figures.quote?.admin_help ? ` · Precio de la pieza ${formatCurrency(figures.quote.piece_total)} → ${formatCurrency(figures.quote.total)}` : ''}
+      </p>
+    )
+  }
   return (
-    <p className="text-sm text-slate-700">
-      Su parte {formatCurrency(figures.pay.total)} · Cobro al cliente {formatCurrency(figures.quote?.total || 0)}
-      {figures.quote?.admin_help ? ` · Precio de la pieza ${formatCurrency(figures.quote.piece_total)} → ${formatCurrency(figures.quote.total)}` : ''}
-    </p>
+    <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-900 p-4 text-white">
+      <div>
+        <p className="text-xs text-slate-300">Cobro al cliente</p>
+        <p className="text-2xl font-bold tabular-nums">{formatCurrency(figures.quote?.total || 0)}</p>
+      </div>
+      <div>
+        <p className="text-xs text-slate-300">Su parte</p>
+        <p className="text-2xl font-bold tabular-nums">{formatCurrency(figures.pay.total)}</p>
+      </div>
+      {figures.quote?.admin_help && (
+        <p className="col-span-2 text-xs text-amber-200">
+          Precio de la pieza {formatCurrency(figures.quote.piece_total)} → {formatCurrency(figures.quote.total)}
+        </p>
+      )}
+    </div>
   )
 }
 
-export default function CommissionRecord({ process, readOnly = false, onChange }) {
+export default function CommissionRecord({ process, readOnly = false, onChange, standalone = false }) {
   const { catalog, failed } = useCatalog()
   const commission = process.commission || emptyCommission()
   const patch = (partial) => onChange({ ...commission, ...partial })
@@ -161,8 +172,10 @@ export default function CommissionRecord({ process, readOnly = false, onChange }
   return (
     <div className="pt-2 mt-1 border-t border-slate-100 space-y-2">
       <div>
-        <label className="label">Comisión de la hoja</label>
-        <p className="text-xs text-slate-500 mb-1">Todavía no entra al sueldo.</p>
+        <label className="label">{standalone ? 'Pieza' : 'Comisión de la hoja'}</label>
+        <p className="text-xs text-slate-500 mb-1">
+          {standalone ? 'Elegí la pieza y las medidas. El precio sale abajo.' : 'Todavía no entra al sueldo.'}
+        </p>
         {readOnly ? (
           <p className="text-sm text-slate-700">{pieceName(catalog, commission.piece_id) || 'Sin anotar'}</p>
         ) : (
@@ -205,7 +218,7 @@ export default function CommissionRecord({ process, readOnly = false, onChange }
       )}
       {(isCatalog || isOther) && (
         <div className="space-y-2">
-          <MoneyPreview commission={commission} steps={process.steps} active />
+          <MoneyPreview commission={commission} steps={process.steps} active prominent={standalone} />
           {!readOnly && (
             <button
               type="button"

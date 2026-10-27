@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Check, ChevronDown, ChevronRight } from 'lucide-react'
 import MechanicSearch from './MechanicSearch'
-import CommissionRecord, { CommissionSummary } from './CommissionRecord'
 import {
   PROCESS_STEPS,
   STEP_STATUS_META,
@@ -204,7 +203,6 @@ export default function PieceProcessFields({ process, onChange = () => {}, readO
         )}
       </div>
       <Participation process={p} />
-      <CommissionSummary process={p} />
 
       {open && (
         <div className="px-3 pb-3 pt-1 border-t border-slate-100">
@@ -248,11 +246,6 @@ export default function PieceProcessFields({ process, onChange = () => {}, readO
             })}
           </ol>
 
-          <CommissionRecord
-            process={p}
-            readOnly={readOnly}
-            onChange={(commission) => patch({ commission })}
-          />
           <div className="pt-2 mt-1 border-t border-slate-100 space-y-2">
             <div>
               <label className="label">Entrega OT</label>

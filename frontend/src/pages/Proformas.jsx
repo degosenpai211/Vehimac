@@ -12,6 +12,7 @@ import { useToast } from '../components/Toast'
 import { api, formatDate, reserveWhatsAppTab, whatsappUrl } from '../services/api'
 import { sendProformaPdfToClient } from '../services/proformaPdf'
 import { addPendingFicha } from '../utils/pendingFichas'
+import PieceCalculator from '../components/PieceCalculator'
 
 const emptyLine = () => ({
   description: '',
@@ -268,9 +269,12 @@ export default function Proformas() {
           <h1 className="text-2xl font-bold">Proformas</h1>
           <p className="text-sm text-slate-500">Cotización en PDF por WhatsApp. El interesado no entra a Clientes hasta que acepte o lo pases a OT. Si no acepta, se borra todo a los 7 días o con No aceptó.</p>
         </div>
-        <button onClick={openCreate} data-tour="nueva-proforma" className="btn-primary">
-          <Plus size={18} /> Crear proforma
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <PieceCalculator />
+          <button onClick={openCreate} data-tour="nueva-proforma" className="btn-primary">
+            <Plus size={18} /> Crear proforma
+          </button>
+        </div>
       </div>
 
       {rows.length === 0 ? (
